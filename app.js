@@ -49,10 +49,30 @@ const nameOf = (id) => players[id]?.name || "Someone";
 const listNames = (ids) => { const n = ids.map(nameOf); return n.length < 2 ? n.join("") : n.slice(0, -1).join(", ") + " and " + n[n.length - 1]; };
 const better = (g, a, b) => (g.better === "low" ? a < b : a > b);
 
+// Family photos live in a private Supabase storage bucket. "storage:dad.jpg" means family/dad.jpg there.
+const photoUrls = {};
+const photoSrc = (u) => (!u ? "" : u.startsWith("storage:") ? photoUrls[u.slice(8)] || "" : /^https:\/\//.test(u) ? u : "");
+async function resolvePhotos() {
+  const want = new Set(["logo.jpg"]);
+  for (const p of Object.values(players)) if (p.avatar_url && p.avatar_url.startsWith("storage:")) want.add(p.avatar_url.slice(8));
+  const missing = [...want].filter((f) => !photoUrls[f]);
+  if (missing.length) {
+    try {
+      const { data } = await sb.storage.from("family").createSignedUrls(missing, 60 * 60 * 24 * 7);
+      for (const d of data || []) if (d.signedUrl && !d.error) photoUrls[d.path] = d.signedUrl;
+    } catch (e) {}
+  }
+  if (photoUrls["logo.jpg"]) {
+    document.documentElement.style.setProperty("--logo", `url("${photoUrls["logo.jpg"]}")`);
+    document.body.classList.add("has-logo");
+  }
+}
+
 function av(pid, size = "") {
   const p = players[pid] || (me && me.id === pid ? me : {}) || {};
   const ini = (p.name || "?").trim().split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase();
-  const img = p.avatar_url ? `<img src="${esc(p.avatar_url)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  const src = photoSrc(p.avatar_url);
+  const img = src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : "";
   return `<span class="av ${size}" style="--c:${safeColor(p.color)}">${esc(ini)}${img}</span>`;
 }
 const person = (pid, size = "s") => `<span class="person">${av(pid, size)}<span class="nm">${esc(nameOf(pid))}</span></span>`;
@@ -291,7 +311,7 @@ function renderFamily() {
     $("#editName").value = me.name; $("#editPic").value = me.avatar_url || ""; st.editColor = me.color;
     renderSwatches("#editColors", st.editColor);
   }
-  const list = Object.values(players).sort((a, b) => a.name.localeCompare(b.name));
+  const list = Object.values(players); // family order: Dad, Mum, Tobey, Jas
   $("#familyList").innerHTML = list.map((p) => {
     const wins = games.reduce((s, g) => s + (gameTable(g.id, 0).find((r) => r.uid === p.id)?.wins || 0), 0);
     const played = [...scores.values()].filter((r) => r.player_id === p.id).length;
@@ -375,6 +395,7 @@ async function loadPlayers() {
   if (error) throw error;
   players = Object.fromEntries(data.map((p) => [p.id, p]));
   if (me && players[me.id]) me = { ...me, ...players[me.id] };
+  await resolvePhotos();
 }
 async function loadAll() {
   const [g] = await Promise.all([
@@ -408,8 +429,9 @@ async function showWho(message) {
   show("screen-who");
   try { await loadPlayers(); } catch (e) { players = {}; }
   const list = Object.values(players);
-  $("#whoGrid").innerHTML = list.map((p) => `<button class="who" type="button" data-claim="${p.id}">${av(p.id, "l")}<span>${esc(p.name)}</span></button>`).join("");
+  $("#whoGrid").innerHTML = list.map((p) => `<button class="who" type="button" data-claim="${p.id}">${av(p.id, "xl")}<span>${esc(p.name)}</span></button>`).join("");
   $("#newTitle").textContent = list.length ? "Not on the list? Add yourself" : "You're first! Add yourself";
+  $("#newForm").open = !list.length;
   const used = new Set(list.map((p) => p.color));
   st.newColor = st.newColor || COLORS.find((c) => !used.has(c)) || COLORS[0];
   renderSwatches("#newColors", st.newColor);

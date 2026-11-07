@@ -37,17 +37,20 @@
 
 <!-- Who's playing (one-time login) -->
 <section id="screen-who" class="screen center" hidden>
-  <div class="brand big"><span class="logo" aria-hidden="true"></span>LockItIn</div>
+  <div class="hero-logo" aria-hidden="true"><span class="hero-photo"></span><span class="hero-lock"></span></div>
+  <div class="brand big">LockItIn</div>
   <h1 class="who-title">Who's playing?</h1>
-  <p class="muted">Tap your name. This device will remember you.</p>
+  <p class="muted">Tap your face. This device will remember you.</p>
   <div class="who-grid" id="whoGrid"></div>
-  <form class="panel narrow stack" id="newForm" novalidate>
-    <h2 id="newTitle">New here? Add yourself</h2>
-    <div class="field"><label class="label" for="newName">Your name</label><input id="newName" maxlength="24" autocomplete="nickname" placeholder="e.g. Grandma"></div>
-    <div class="field"><span class="label">Pick your color</span><div class="swatches" id="newColors" role="radiogroup" aria-label="Your color"></div></div>
-    <button class="btn" type="submit">Let's go</button>
-    <p class="msg" id="whoMsg" role="status"></p>
-  </form>
+  <p class="msg" id="whoMsg" role="status"></p>
+  <details class="panel narrow newform" id="newForm">
+    <summary id="newTitle">Not on the list? Add yourself</summary>
+    <form class="stack" novalidate>
+      <div class="field"><label class="label" for="newName">Your name</label><input id="newName" maxlength="24" autocomplete="nickname" placeholder="e.g. Grandma"></div>
+      <div class="field"><span class="label">Pick your color</span><div class="swatches" id="newColors" role="radiogroup" aria-label="Your color"></div></div>
+      <button class="btn" type="submit">Let's go</button>
+    </form>
+  </details>
 </section>
 
 <!-- App -->
@@ -68,8 +71,8 @@
     <!-- TODAY -->
     <section id="tab-today" class="tabpane">
       <div class="hello">
-        <h1 id="hello"></h1>
-        <p class="muted" id="helloSub"></p>
+        <div class="hero-logo small" aria-hidden="true"><span class="hero-photo"></span><span class="hero-lock"></span></div>
+        <div class="stack tight"><h1 id="hello"></h1><p class="muted" id="helloSub"></p></div>
       </div>
 
       <button class="yesterday" id="yesterdayBtn" type="button">
