@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LockItIn</title>
+<meta name="description" content="The family leaderboard for Krillion, MapTap and TimeGuessr.">
+<meta name="theme-color" content="#5B3DF5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#120F24" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="LockItIn">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Nunito:wght@500;600;700;800&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Loading -->
+<section id="screen-loading" class="screen center">
+  <div class="brand big"><span class="logo" aria-hidden="true"></span>LockItIn</div>
+  <p class="muted">Warming up the scoreboard…</p>
+</section>
+
+<!-- Not configured -->
+<section id="screen-setup" class="screen center" hidden>
+  <div class="brand big"><span class="logo" aria-hidden="true"></span>LockItIn</div>
+  <div class="panel narrow">
+    <h2>Almost ready</h2>
+    <p>This copy of LockItIn isn't connected to a database yet. Add the Supabase URL and public key to <code>config.js</code>, then reload.</p>
+  </div>
+</section>
+
+<!-- Who's playing (one-time login) -->
+<section id="screen-who" class="screen center" hidden>
+  <div class="brand big"><span class="logo" aria-hidden="true"></span>LockItIn</div>
+  <h1 class="who-title">Who's playing?</h1>
+  <p class="muted">Tap your name. This device will remember you.</p>
+  <div class="who-grid" id="whoGrid"></div>
+  <form class="panel narrow stack" id="newForm" novalidate>
+    <h2 id="newTitle">New here? Add yourself</h2>
+    <div class="field"><label class="label" for="newName">Your name</label><input id="newName" maxlength="24" autocomplete="nickname" placeholder="e.g. Grandma"></div>
+    <div class="field"><span class="label">Pick your color</span><div class="swatches" id="newColors" role="radiogroup" aria-label="Your color"></div></div>
+    <button class="btn" type="submit">Let's go</button>
+    <p class="msg" id="whoMsg" role="status"></p>
+  </form>
+</section>
+
+<!-- App -->
+<div id="main" hidden>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="logo" aria-hidden="true"></span>LockItIn</div>
+      <nav class="topnav" aria-label="Sections">
+        <button data-tab="today">Today</button>
+        <button data-tab="boards">Leaderboards</button>
+        <button data-tab="family">Family</button>
+      </nav>
+      <button class="me-btn" id="meBtn" data-tab="family" aria-label="Your profile"></button>
+    </div>
+  </header>
+
+  <main>
+    <!-- TODAY -->
+    <section id="tab-today" class="tabpane">
+      <div class="hello">
+        <h1 id="hello"></h1>
+        <p class="muted" id="helloSub"></p>
+      </div>
+
+      <button class="yesterday" id="yesterdayBtn" type="button">
+        <span class="crown" aria-hidden="true">👑</span>
+        <span class="ytext"><b>Yesterday's winners</b><span id="yTease">Tap to reveal</span></span>
+        <span class="chev" aria-hidden="true">›</span>
+      </button>
+
+      <div class="cards" id="cards"></div>
+    </section>
+
+    <!-- BOARDS -->
+    <section id="tab-boards" class="tabpane" hidden>
+      <div class="gamepicker" id="gamePicker" role="tablist" aria-label="Game"></div>
+      <div class="row between wrap">
+        <div class="seg" id="period" role="group" aria-label="Period">
+          <button data-p="7">7 days</button><button data-p="30">30 days</button><button data-p="0">All time</button>
+        </div>
+        <span class="note" id="rankNote"></span>
+      </div>
+      <div class="podium" id="podium"></div>
+      <div class="tiles" id="tiles"></div>
+      <div class="tablewrap" id="board"></div>
+      <p class="note" id="boardNote"></p>
+      <h3 id="gridH"></h3>
+      <div class="tablewrap" id="grid"></div>
+    </section>
+
+    <!-- FAMILY -->
+    <section id="tab-family" class="tabpane" hidden>
+      <div class="panel profile">
+        <div class="profile-top">
+          <div id="meAvatar"></div>
+          <div class="stack tight">
+            <h2 id="meName"></h2>
+            <button class="link" id="switchBtn" type="button"></button>
+          </div>
+        </div>
+        <div class="mystats" id="myStats"></div>
+        <details class="edit">
+          <summary>Edit name, color or picture</summary>
+          <div class="stack">
+            <div class="field"><label class="label" for="editName">Name</label><input id="editName" maxlength="24"></div>
+            <div class="field"><span class="label">Color</span><div class="swatches" id="editColors" role="radiogroup" aria-label="Your color"></div></div>
+            <div class="field"><label class="label" for="editPic">Profile picture link (optional)</label><input id="editPic" inputmode="url" placeholder="https://… .jpg"></div>
+            <button class="btn small" id="saveMe" type="button">Save</button>
+            <p class="msg" id="meMsg" role="status"></p>
+          </div>
+        </details>
+      </div>
+
+      <div class="panel">
+        <h2>The family</h2>
+        <div class="family" id="familyList"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Get the app</h2>
+        <p class="note"><b>iPhone:</b> open the link in Safari, tap Share, then "Add to Home Screen".<br><b>Android:</b> open it in Chrome, tap ⋮, then "Install app". Then you can share a result straight from a game into LockItIn.<br><b>Computer:</b> just bookmark the link. In Chrome or Edge you can also click the install icon in the address bar.</p>
+      </div>
+
+      <div class="panel" id="adminPanel" hidden>
+        <h2>Admin</h2>
+        <p class="note">Only admins see this. Edit the games, set profile pictures, or make someone else an admin.</p>
+        <h3>Games</h3>
+        <div id="gameRows" class="stack"></div>
+        <div class="row wrap">
+          <button class="btn ghost small" id="addGame" type="button">Add a game</button>
+          <button class="btn small" id="saveGames" type="button">Save games</button>
+        </div>
+        <h3>People</h3>
+        <div id="peopleRows" class="stack"></div>
+        <p class="msg" id="adminMsg" role="status"></p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button data-tab="today"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 9h16M9 2v4M15 2v4"/></svg>Today</button>
+    <button data-tab="boards"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21V11H3v10zM15 21V4H9v17zM21 21v-7h-5v7z"/></svg>Leaderboards</button>
+    <button data-tab="family"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9.5" r="2.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5M15.5 14.6c2.8-.4 5 1.3 6 4.4"/></svg>Family</button>
+  </nav>
+</div>
+
+<!-- Post score sheet -->
+<div class="sheet-wrap" id="postSheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="postTitle">
+    <div class="sheet-head" id="postHead">
+      <h2 id="postTitle">Lock in your score</h2>
+      <button class="x" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <div class="sheet-body stack">
+      <div class="chips" id="postChips" role="group" aria-label="Game"></div>
+      <div class="field">
+        <div class="row between"><label class="label" for="paste">Paste the game's share text</label><button class="link" id="pasteBtn" type="button">Paste</button></div>
+        <textarea id="paste" placeholder="Paste your result here and we'll find the score"></textarea>
+      </div>
+      <div class="row two">
+        <div class="field"><label class="label" for="score">Score</label><input id="score" class="score" inputmode="decimal" autocomplete="off" placeholder="0"></div>
+        <div class="field"><label class="label" for="date">Puzzle date</label><input id="date" type="date"></div>
+      </div>
+      <button class="btn big" id="save" type="button">Lock it in 🔒</button>
+      <p class="msg" id="msg" role="status"></p>
+    </div>
+  </div>
+</div>
+
+<!-- Yesterday's winners -->
+<div class="sheet-wrap" id="ySheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="yTitle">
+    <div class="sheet-head yhead">
+      <div><h2 id="yTitle">Yesterday's winners</h2><p id="yDate"></p></div>
+      <button class="x" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <div class="sheet-body stack" id="yBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
