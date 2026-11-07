@@ -165,6 +165,51 @@ function parseKrillion(text) {
   const counted = Object.values(tiers).reduce((s, n) => s + n, 0);
   return { score, puzzle: puzzle ? +puzzle : null, line: emo.join(""), tiers, map: learned, ok: counted === emo.length && known() === score && emo.length > 0 };
 }
+// MapTap share: "80👏 96🔥 49😟 80👏 91👑" then "Final score: 787". Each guess is out of 100.
+function parseMapTap(text) {
+  const t = String(text || "");
+  const fm = t.match(/final\s*score\s*[:\-]?\s*([\d,]+)/i);
+  if (!fm) return null;
+  const before = t.slice(0, fm.index).replace(/https?:\/\/\S+|www\.\S+/gi, " ");
+  const rounds = [...before.matchAll(/(?:^|[^\d,.])(\d{1,3})\s*(?=\p{Extended_Pictographic})/gu)].map((m) => +m[1]).filter((n) => n <= 100);
+  return rounds.length ? { score: num(fm[1]), rounds } : null;
+}
+// TimeGuessr share: "TimeGuessr #1256 — 29,162/50,000" then a line per round:
+// "1️⃣ 🏆7,816 · 📅 0y · 🌍 1105.8km"
+function parseTimeGuessr(text) {
+  const t = String(text || "");
+  const sm = t.match(/([\d,]+)\s*\/\s*50,?000/);
+  if (!sm) return null;
+  const rounds = [];
+  for (const line of t.split(/\r?\n/)) {
+    const y = line.match(/📅\s*(\d+)\s*y/u), d = line.match(/🌍\s*([\d,.]+)\s*(km|m|mi)\b/iu);
+    if (!y && !d) continue;
+    const sc = line.match(/🏆\s*([\d,]+)/u);
+    let km = d ? num(d[1]) : null;
+    if (d && /^m$/i.test(d[2])) km /= 1000;
+    if (d && /^mi$/i.test(d[2])) km *= 1.609344;
+    rounds.push({ score: sc ? num(sc[1]) : null, years: y ? +y[1] : null, km: km != null ? Math.round(km * 10) / 10 : null });
+  }
+  return rounds.length ? { score: num(sm[1]), rounds } : null;
+}
+const avgOf = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+const fmtKm = (k) => (k == null ? "–" : `${k >= 100 ? Math.round(k).toLocaleString() : (Math.round(k * 10) / 10).toLocaleString()} km`);
+const fmtYrs = (y) => (y == null ? "–" : `${(Math.round(y * 10) / 10).toLocaleString()} yrs`);
+// Per-round stats for one player's rows (MapTap guesses, TimeGuessr rounds)
+function roundStats(gid, rows) {
+  const out = { games: 0, n: 0 };
+  if (gid === "maptap") {
+    const g = rows.flatMap((r) => (r.details && r.details.rounds) || []).filter((x) => typeof x === "number");
+    out.games = rows.filter((r) => r.details && r.details.rounds).length;
+    Object.assign(out, { n: g.length, avg: avgOf(g), best: g.length ? Math.max(...g) : null });
+  } else if (gid === "timeguessr") {
+    const rs = rows.flatMap((r) => (r.details && r.details.rounds) || []);
+    out.games = rows.filter((r) => r.details && r.details.rounds).length;
+    const yrs = rs.map((x) => x.years).filter((x) => x != null), kms = rs.map((x) => x.km).filter((x) => x != null);
+    Object.assign(out, { n: rs.length, yrs: avgOf(yrs), km: avgOf(kms), exact: yrs.filter((x) => x === 0).length });
+  }
+  return out;
+}
 const tierLine = (tiers) => KRILL_TIERS.filter((t) => tiers && tiers[t.k]).map((t) => `${tierIcon(t.k)} ${t.label} ×${tiers[t.k]}`).join(" · ");
 
 /* ---------- share-text parsing ---------- */
@@ -341,7 +386,23 @@ function renderBoards() {
 
   // Krillion: answer tiers (from pasted results)
   const kw = $("#krill"), kh = $("#krillH");
-  kw.hidden = kh.hidden = g.id !== "krillion";
+  kw.hidden = kh.hidden = !["krillion", "maptap", "timeguessr"].includes(g.id);
+  if (g.id === "maptap" || g.id === "timeguessr") {
+    const mt = g.id === "maptap", by = {};
+    for (const r of period) if (r.details && r.details.rounds) (by[r.player_id] = by[r.player_id] || []).push(r);
+    const st2 = Object.fromEntries(Object.keys(by).map((u) => [u, roundStats(g.id, by[u])]));
+    const fam = roundStats(g.id, Object.values(by).flat());
+    const ids = Object.keys(st2).sort((a, b) => mt ? st2[b].avg - st2[a].avg : (st2[a].km - st2[b].km) || (st2[a].yrs - st2[b].yrs));
+    kh.textContent = mt ? "Per guess" : "How close?";
+    const cols = mt
+      ? [["Avg per guess", (x) => fmt(x.avg)], ["Best guess", (x) => fmt(x.best)], ["Guesses", (x) => x.n]]
+      : [["Avg distance", (x) => fmtKm(x.km)], ["Avg years off", (x) => fmtYrs(x.yrs)], ["Spot-on years", (x) => x.exact], ["Rounds", (x) => x.n]];
+    kw.innerHTML = ids.length
+      ? `<table class="catches"><thead><tr><th></th><th>Player</th>${cols.map((c) => `<th>${c[0]}</th>`).join("")}</tr></thead><tbody>
+        ${ids.map((u) => `<tr class="${u === me.id ? "me" : ""}"><td></td><td class="pl">${person(u)}</td>${cols.map((c) => `<td>${c[1](st2[u])}</td>`).join("")}</tr>`).join("")}
+        <tr class="famrow"><td></td><td class="pl">Family</td>${cols.map((c) => `<td>${c[1](fam)}</td>`).join("")}</tr></tbody></table>`
+      : `<div class="empty"><b>No round details yet</b>Paste your ${esc(g.name)} result when you lock in your score and we'll track ${mt ? "your average score per guess" : "your average distance and years off"}.</div>`;
+  }
   if (g.id === "krillion") {
     const tally = {}, fam = Object.fromEntries(KRILL_TIERS.map((t) => [t.k, 0]));
     for (const r of period) {
@@ -388,6 +449,10 @@ function renderFamily() {
           const tot = {}; for (const x of rowsFor("krillion")) if (x.player_id === me.id && x.details && x.details.tiers) for (const t of KRILL_TIERS) tot[t.k] = (tot[t.k] || 0) + (x.details.tiers[t.k] || 0);
           const s = KRILL_TIERS.filter((t) => tot[t.k]).map((t) => `${tierIcon(t.k)} ${tot[t.k]}`).join("  ");
           return s ? `<span class="s" title="Your answer tiers, all time">${s}</span>` : "";
+        })() : g.id === "maptap" || g.id === "timeguessr" ? (() => {
+          const x = roundStats(g.id, rowsFor(g.id).filter((r) => r.player_id === me.id && r.details && r.details.rounds));
+          if (!x.n) return "";
+          return `<span class="s" title="All time, from pasted results">${g.id === "maptap" ? `Avg ${fmt(x.avg)} per guess` : `Avg ${fmtKm(x.km)} · ${fmtYrs(x.yrs)} off`}</span>`;
         })() : ""}`
       : `<span class="s">Not played yet</span>`}</div>`;
   }).join("");
@@ -433,6 +498,7 @@ function closeSheets() { $$(".sheet-wrap").forEach((s) => (s.hidden = true)); do
 
 function openPost(gid, text) {
   st.post = gid || st.post || games[0].id;
+  st.krill = st.rounds = null;
   $("#paste").value = text || ""; $("#score").value = ""; $("#msg").textContent = ""; $("#msg").className = "msg";
   $("#date").value = todayStr(); $("#date").max = todayStr();
   renderPostGame();
@@ -535,10 +601,13 @@ function prefill() {
   msg.className = "msg";
   st.krill = st.post === "krillion" ? parseKrillion($("#paste").value) : null;
   if (st.krill && !st.krill.line) st.krill = null;
+  st.rounds = st.post === "maptap" ? parseMapTap($("#paste").value) : st.post === "timeguessr" ? parseTimeGuessr($("#paste").value) : null;
+  const rx = st.rounds && roundStats(st.post, [{ details: st.rounds }]);
   if (v != null) {
     $("#score").value = v;
     msg.textContent = st.krill
       ? `Found it: ${fmt(v)}. ${tierLine(st.krill.tiers)}${st.krill.ok ? "" : " (some answers I couldn't place)"}`
+      : rx && rx.n ? `Found it: ${fmt(v)}. ${st.post === "maptap" ? `Avg ${fmt(rx.avg)} per guess` : `Avg ${fmtKm(rx.km)} away, ${fmtYrs(rx.yrs)} off`}`
       : `Found it: ${fmt(v)}`;
   }
   else if ($("#paste").value.trim()) msg.textContent = "Couldn't spot a score in that. Type it in below.";
@@ -560,6 +629,7 @@ async function saveScore() {
   const mineBefore = rowsFor(g.id).filter((r) => r.player_id === me.id && r.play_date !== date).map((r) => Number(r.score));
   const pb = mineBefore.length && mineBefore.every((s) => better(g, v, s));
   const row = { player_id: me.id, game_id: g.id, play_date: date, score: v, details: null };
+  if ((g.id === "maptap" || g.id === "timeguessr") && st.rounds && st.rounds.score === v) row.details = { rounds: st.rounds.rounds };
   if (g.id === "krillion" && st.krill && st.krill.score === v) {
     const { tiers, line, puzzle, map, ok } = st.krill;
     row.details = { tiers, line, puzzle, map, ok };

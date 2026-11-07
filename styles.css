@@ -39,6 +39,21 @@ button{font-family:inherit}
 /* brand */
 .brand{display:inline-flex;align-items:center;gap:9px;font-family:var(--f-display);font-weight:800;font-size:21px;letter-spacing:-.02em}
 .brand.big{font-size:42px;gap:12px}
+.word{display:inline-flex;letter-spacing:-.01em}
+.word span{display:inline-block;text-shadow:0 2px 0 rgba(28,24,56,.16);transform:rotate(var(--tilt,0deg)) translateY(var(--lift,0));transition:transform .25s cubic-bezier(.3,1.6,.5,1)}
+.word span:nth-child(1){color:var(--accent);--tilt:-6deg}
+.word span:nth-child(2){color:var(--krillion);--tilt:4deg;--lift:-1px}
+.word span:nth-child(3){color:var(--timeguessr);--tilt:-3deg}
+.word span:nth-child(4){color:var(--maptap);--tilt:5deg;--lift:1px}
+.word span:nth-child(5){color:var(--other);--tilt:-5deg;--lift:-2px}
+.word span:nth-child(6){color:var(--gold);--tilt:4deg}
+.word span:nth-child(7){color:var(--krillion);--tilt:-4deg;--lift:1px}
+.word span:nth-child(8){color:var(--accent);--tilt:6deg}
+.brand:hover .word span{--lift:-3px}
+@media (prefers-reduced-motion:no-preference){.brand.big .word span{animation:hop .6s cubic-bezier(.3,1.6,.5,1) both}
+  .brand.big .word span:nth-child(2){animation-delay:.05s}.brand.big .word span:nth-child(3){animation-delay:.1s}.brand.big .word span:nth-child(4){animation-delay:.15s}
+  .brand.big .word span:nth-child(5){animation-delay:.2s}.brand.big .word span:nth-child(6){animation-delay:.25s}.brand.big .word span:nth-child(7){animation-delay:.3s}.brand.big .word span:nth-child(8){animation-delay:.35s}}
+@keyframes hop{from{transform:translateY(14px) scale(.6);opacity:0}to{transform:rotate(var(--tilt,0deg)) translateY(var(--lift,0));opacity:1}}
 .logo{width:1.15em;height:1.15em;border-radius:.32em;background:var(--accent) url("icons/glyph.svg") center/68% no-repeat;flex:none;box-shadow:0 4px 12px -4px var(--accent)}
 
 /* family photo logo */
