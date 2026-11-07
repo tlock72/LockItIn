@@ -66,7 +66,7 @@ body.has-logo .hero-photo{background:var(--logo) center/cover no-repeat}
 .who-grid:empty{display:none}
 @media (max-width:560px){
   .who-grid{flex-wrap:nowrap;width:100%;gap:8px}
-  .who{flex:1 1 0;min-width:0;padding:10px 4px 8px;font-size:14px}
+  .who-grid .who{flex:1 1 0;min-width:0;padding:10px 4px 8px;font-size:14px}
   .who .av.xl{--s:min(19vw,72px)}
 }
 .who{display:grid;justify-items:center;gap:6px;background:var(--surface);border:2px solid var(--line);border-radius:var(--r);padding:14px 12px 10px;min-width:104px;cursor:pointer;color:var(--ink);font-weight:800;box-shadow:var(--shadow)}
