@@ -320,6 +320,17 @@ function yesterdayResults() {
   return games.map((g) => ({ g, list: rankDay(rowsFor(g.id, y).filter((r) => r.play_date === y).map((r) => ({ uid: r.player_id, s: Number(r.score), d: r.details })), g) }));
 }
 
+// "Dad leads with 820" while people are still to play; "Dad wins with 820" once everyone has.
+function leaderLine(list, done) {
+  const top = list[0];
+  if (!top) return "Nobody's in yet. Be first!";
+  if (list.length < 2) return `<b>${esc(nameOf(top.uid))}</b> is first in with ${fmt(top.s)}`;
+  const firsts = list.filter((e) => e.rank === 1).map((e) => e.uid);
+  const who = `<b>${firsts.map((u) => esc(nameOf(u))).join(" &amp; ")}</b>`;
+  const many = firsts.length > 1;
+  return `${done ? "🏆" : "👑"} ${who} ${done ? (many ? "win" : "wins") : many ? "lead" : "leads"} with ${fmt(top.s)}`;
+}
+
 function renderToday() {
   const today = todayStr(), streak = anyStreak(me.id);
   $("#hello").textContent = `${greeting()}, ${me.name}!`;
@@ -330,7 +341,8 @@ function renderToday() {
   const fam = Object.keys(players).length;
   $("#cards").innerHTML = games.map((g) => {
     const list = rankDay(rowsFor(g.id, today).filter((r) => r.play_date === today).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g);
-    const mine = list.find((e) => e.uid === me.id), top = list[0];
+    const mine = list.find((e) => e.uid === me.id);
+    const done = fam > 1 && list.length >= fam; // everyone has played: the day is settled
     const link = g.url ? `<a class="play" href="${esc(g.url)}" target="_blank" rel="noopener">Play ↗</a>` : "";
     return `<article class="gcard" style="--gc:${gc(g.id)}">
       <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3>${link}</div>
@@ -340,7 +352,7 @@ function renderToday() {
           : `<div class="notyet">Not played yet</div>`}
         ${(() => { const d = mine && scores.get(`${me.id}|${g.id}|${today}`)?.details; return d && d.line ? `<div class="emojiline" title="${esc(tierLine(d.tiers))}">${esc(graphemes(d.line).slice(0, 7).join(""))}</div>` : ""; })()}
         <div class="played"><span class="stackav">${list.slice(0, 8).map((e) => av(e.uid, "s")).join("")}</span><span>${list.length} of ${fam} played today</span></div>
-        <div class="leader">${top && list.length > 1 ? `👑 <b>${esc(nameOf(top.uid))}</b> leads with ${fmt(top.s)}` : top ? `<b>${esc(nameOf(top.uid))}</b> is first in with ${fmt(top.s)}` : "Nobody's in yet. Be first!"}</div>
+        <div class="leader${done ? " won" : ""}">${leaderLine(list, done)}</div>
         <button class="btn" type="button" data-post="${esc(g.id)}">${mine ? `<span class="lg">Update my score</span><span class="sm">Update</span>` : `<span class="lg">Lock in my score</span><span class="sm">Lock in 🔒</span>`}</button>
       </div>
     </article>`;
