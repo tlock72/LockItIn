@@ -51,7 +51,7 @@ const better = (g, a, b) => (g.better === "low" ? a < b : a > b);
 
 // Family photos live in a private Supabase storage bucket. "storage:dad.jpg" means family/dad.jpg there.
 const photoUrls = {};
-const photoSrc = (u) => (!u ? "" : u.startsWith("storage:") ? photoUrls[u.slice(8)] || "" : /^https:\/\//.test(u) ? u : "");
+const photoSrc = (u) => (!u ? "" : u.startsWith("storage:") ? photoUrls[u.slice(8)] || "" : /^https:\/\//.test(u) || /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(u) ? u : "");
 async function resolvePhotos() {
   const want = new Set(["logo.jpg"]);
   for (const p of Object.values(players)) if (p.avatar_url && p.avatar_url.startsWith("storage:")) want.add(p.avatar_url.slice(8));
@@ -146,8 +146,10 @@ function parseKrillion(text) {
   const sm = rest.match(/(^|[^\d#,.])(\d{1,3}(?:,\d{3})+|\d+)(?![\d,.])\s*(?:pts|points)?/i);
   if (!sm) return null;
   const score = num(sm[2]);
-  const after = rest.slice(sm.index + sm[0].length);
-  const emo = graphemes(after).filter((g) => /\p{Extended_Pictographic}/u.test(g));
+  // Krillion has 7 questions: keep the first 7 answer emojis, and stop at a second
+  // "Krillion #…" header in case the result was pasted twice.
+  const after = rest.slice(sm.index + sm[0].length).split(/krillion/i)[0];
+  const emo = graphemes(after).filter((g) => /\p{Extended_Pictographic}/u.test(g)).slice(0, 7);
   const map = krillMap(), tiers = Object.fromEntries(KRILL_TIERS.map((t) => [t.k, 0])), unknown = {};
   for (const e of emo) { if (map[e]) tiers[map[e]]++; else unknown[e] = (unknown[e] || 0) + 1; }
   const known = () => KRILL_TIERS.reduce((s, t) => s + tiers[t.k] * t.pts, 0);
@@ -209,6 +211,16 @@ function roundStats(gid, rows) {
     Object.assign(out, { n: rs.length, yrs: avgOf(yrs), km: avgOf(kms), exact: yrs.filter((x) => x === 0).length });
   }
   return out;
+}
+// Older Krillion rows may hold a double-pasted line (more than 7 answers). Keep the first 7
+// and recount the tiers; the 7 answers must add up to the score.
+function tidyKrill(r) {
+  const d = r && r.game_id === "krillion" && r.details;
+  if (!d || !d.line) return r;
+  const emo = graphemes(d.line).filter((g) => /\p{Extended_Pictographic}/u.test(g));
+  if (emo.length <= 7) return r;
+  const k = parseKrillion(`Krillion\n${r.score}\n${emo.slice(0, 7).join("")}`);
+  return k ? { ...r, details: { ...d, line: k.line, tiers: k.tiers, ok: k.ok } } : r;
 }
 const tierLine = (tiers) => KRILL_TIERS.filter((t) => tiers && tiers[t.k]).map((t) => `${tierIcon(t.k)} ${t.label} ×${tiers[t.k]}`).join(" · ");
 
@@ -326,10 +338,10 @@ function renderToday() {
         ${mine
           ? `<div class="mine"><span class="big">${fmt(mine.s)}</span>${g.max_score ? `<span class="of">/ ${fmt(g.max_score)}</span>` : ""}<span class="pill on">${mine.rank === 1 && list.length > 1 ? "👑 " : ""}#${mine.rank} of ${list.length}</span></div>`
           : `<div class="notyet">Not played yet</div>`}
-        ${(() => { const d = mine && scores.get(`${me.id}|${g.id}|${today}`)?.details; return d && d.line ? `<div class="emojiline" title="${esc(tierLine(d.tiers))}">${esc(d.line)}</div>` : ""; })()}
+        ${(() => { const d = mine && scores.get(`${me.id}|${g.id}|${today}`)?.details; return d && d.line ? `<div class="emojiline" title="${esc(tierLine(d.tiers))}">${esc(graphemes(d.line).slice(0, 7).join(""))}</div>` : ""; })()}
         <div class="played"><span class="stackav">${list.slice(0, 8).map((e) => av(e.uid, "s")).join("")}</span><span>${list.length} of ${fam} played today</span></div>
         <div class="leader">${top && list.length > 1 ? `👑 <b>${esc(nameOf(top.uid))}</b> leads with ${fmt(top.s)}` : top ? `<b>${esc(nameOf(top.uid))}</b> is first in with ${fmt(top.s)}` : "Nobody's in yet. Be first!"}</div>
-        <button class="btn" type="button" data-post="${esc(g.id)}">${mine ? "Update my score" : "Lock in my score"}</button>
+        <button class="btn" type="button" data-post="${esc(g.id)}">${mine ? `<span class="lg">Update my score</span><span class="sm">Update</span>` : `<span class="lg">Lock in my score</span><span class="sm">Lock in 🔒</span>`}</button>
       </div>
     </article>`;
   }).join("");
@@ -457,7 +469,7 @@ function renderFamily() {
       : `<span class="s">Not played yet</span>`}</div>`;
   }).join("");
   if (!$("details.edit").open) {
-    $("#editName").value = me.name; $("#editPic").value = me.avatar_url || ""; st.editColor = me.color;
+    $("#editName").value = me.name; $("#editPic").value = me.avatar_url || ""; st.editColor = me.color; showPicPreview();
     renderSwatches("#editColors", st.editColor);
   }
   const list = Object.values(players); // family order: Dad, Mum, Tobey, Jas
@@ -471,7 +483,7 @@ function renderFamily() {
   if (me.is_admin && !adminDirty) {
     $("#gameRows").innerHTML = allGames.filter((x) => x.active).map(gameRow).join("");
     $("#peopleRows").innerHTML = list.map((p) => `<div class="prow" data-pid="${p.id}">${av(p.id, "m")}<b>${esc(p.name)}</b>
-      <div class="ctrls"><input data-k="pic" inputmode="url" placeholder="Profile picture link" value="${esc(p.avatar_url || "")}" aria-label="Profile picture link for ${esc(p.name)}">
+      <div class="ctrls"><input data-k="pic" inputmode="url" placeholder="${p.avatar_url && p.avatar_url.startsWith("data:") ? "Photo chosen in the app" : "Profile picture link"}" value="${esc(p.avatar_url && p.avatar_url.startsWith("data:") ? "" : p.avatar_url || "")}" aria-label="Profile picture link for ${esc(p.name)}">
       <label class="row" style="gap:6px"><input type="checkbox" data-k="admin" ${p.is_admin ? "checked" : ""} ${p.id === me.id ? "disabled" : ""} style="width:auto"> Admin</label>
       <button class="btn small" type="button" data-saveperson>Save</button></div></div>`).join("");
   }
@@ -493,6 +505,70 @@ function renderSwatches(sel, current) {
 
 /* ---------- sheets ---------- */
 let lastFocus = null;
+/* ---------- profile photo: pick, place, shrink ---------- */
+const crop = { img: null, zoom: 1, x: 0, y: 0, base: 1, box: 300 };
+function showPicPreview() {
+  const v = $("#editPic").value, src = photoSrc(v);
+  const p = me || {}, ini = (p.name || "?").trim().split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase();
+  $("#picPreview").innerHTML = `<span class="av l" style="--c:${safeColor(p.color)}">${esc(ini)}${src ? `<img src="${esc(src)}" alt="">` : ""}</span>`;
+  $("#picRemove").hidden = !v;
+}
+function openCrop(file) {
+  const msg = $("#cropMsg"); msg.textContent = ""; msg.className = "msg";
+  if (!/^image\//.test(file.type || "image/")) { toast("That isn't a photo."); return; }
+  const url = URL.createObjectURL(file), img = new Image();
+  img.onload = () => {
+    crop.img = img; crop.zoom = 1; crop.x = 0; crop.y = 0;
+    const el = $("#cropImg"); el.src = url;
+    openSheet("#cropSheet");
+    requestAnimationFrame(() => { crop.box = $("#crop").clientWidth || 300; crop.base = crop.box / Math.min(img.naturalWidth, img.naturalHeight); $("#cropZoom").value = 1; drawCrop(); });
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast("Couldn't open that photo. Try another one."); };
+  img.src = url;
+}
+function clampCrop() {
+  const k = crop.base * crop.zoom, w = crop.img.naturalWidth * k, h = crop.img.naturalHeight * k;
+  const mx = Math.max(0, (w - crop.box) / 2), my = Math.max(0, (h - crop.box) / 2);
+  crop.x = Math.min(mx, Math.max(-mx, crop.x)); crop.y = Math.min(my, Math.max(-my, crop.y));
+}
+function drawCrop() {
+  if (!crop.img) return;
+  clampCrop();
+  const k = crop.base * crop.zoom, w = crop.img.naturalWidth * k, h = crop.img.naturalHeight * k;
+  const left = crop.box / 2 + crop.x - w / 2, top = crop.box / 2 + crop.y - h / 2;
+  const el = $("#cropImg");
+  el.style.width = crop.img.naturalWidth + "px"; el.style.height = crop.img.naturalHeight + "px";
+  el.style.transform = `translate(${left}px, ${top}px) scale(${k})`;
+}
+function setZoom(z) {
+  const old = crop.zoom; crop.zoom = Math.min(4, Math.max(1, z));
+  crop.x *= crop.zoom / old; crop.y *= crop.zoom / old; // zoom around the middle
+  $("#cropZoom").value = crop.zoom; drawCrop();
+}
+function wireCrop() {
+  const box = $("#crop"), pts = new Map(); let pinch = null;
+  box.addEventListener("pointerdown", (e) => { box.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: crop.zoom }; } });
+  box.addEventListener("pointermove", (e) => {
+    const p = pts.get(e.pointerId); if (!p || !crop.img) return;
+    if (pts.size === 1) { crop.x += e.clientX - p.x; crop.y += e.clientY - p.y; }
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2 && pinch) { const [a, b] = [...pts.values()]; setZoom(pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / (pinch.d || 1)); }
+    else drawCrop();
+  });
+  const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; };
+  box.addEventListener("pointerup", up); box.addEventListener("pointercancel", up);
+  box.addEventListener("wheel", (e) => { if (!crop.img) return; e.preventDefault(); setZoom(crop.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); }, { passive: false });
+}
+// Square JPEG, small enough to keep in the players table (about 20-40 KB).
+function cropToDataUrl(size = 320) {
+  const k = crop.base * crop.zoom, w = crop.img.naturalWidth * k, h = crop.img.naturalHeight * k;
+  const sx = (w / 2 - crop.box / 2 - crop.x) / k, sy = (h / 2 - crop.box / 2 - crop.y) / k, sw = crop.box / k;
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  const ctx = c.getContext("2d"); ctx.imageSmoothingQuality = "high";
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, size, size);
+  ctx.drawImage(crop.img, sx, sy, sw, sw, 0, 0, size, size);
+  return c.toDataURL("image/jpeg", 0.85);
+}
 function openSheet(id) { lastFocus = document.activeElement; $(id).hidden = false; document.body.style.overflow = "hidden"; }
 function closeSheets() { $$(".sheet-wrap").forEach((s) => (s.hidden = true)); document.body.style.overflow = ""; if (lastFocus) lastFocus.focus?.(); }
 
@@ -521,7 +597,7 @@ function openYesterday() {
     const win = list.filter((e) => e.rank === 1), rest = list.filter((e) => e.rank !== 1);
     const body = !list.length
       ? `<div class="yempty">Nobody played ${esc(g.name)}. 🦗</div>`
-      : `<div class="ywin">${win.map((e) => av(e.uid, "l")).join("")}<div><div class="who-n">${esc(listNames(win.map((e) => e.uid)))}</div><div class="sc">${fmt(win[0].s)}${g.max_score ? ` <span class="muted" style="font-size:15px">/ ${fmt(g.max_score)}</span>` : ""}</div>${win[0].d && win[0].d.line ? `<div class="emojiline">${esc(win[0].d.line)}</div>` : ""}${list.length === 1 ? `<div class="note">Only player. Still counts in our hearts.</div>` : ""}</div></div>
+      : `<div class="ywin">${win.map((e) => av(e.uid, "l")).join("")}<div><div class="who-n">${esc(listNames(win.map((e) => e.uid)))}</div><div class="sc">${fmt(win[0].s)}${g.max_score ? ` <span class="muted" style="font-size:15px">/ ${fmt(g.max_score)}</span>` : ""}</div>${win[0].d && win[0].d.line ? `<div class="emojiline">${esc(graphemes(win[0].d.line).slice(0, 7).join(""))}</div>` : ""}${list.length === 1 ? `<div class="note">Only player. Still counts in our hearts.</div>` : ""}</div></div>
          ${rest.length ? `<div class="yrest">${rest.map((e) => `<span>${MEDAL[e.rank] || "#" + e.rank} ${esc(nameOf(e.uid))} · ${fmt(e.s)}</span>`).join("")}</div>` : ""}`;
     return `<div class="ygame" style="--gc:${gc(g.id)}"><div class="ygame-h"><span>${esc(g.name)}</span><span>${list.length} played</span></div>${body}</div>`;
   }).join("");
@@ -551,7 +627,7 @@ async function loadAll() {
   const [g] = await Promise.all([
     sb.from("games").select("*").order("sort").then((r) => { if (r.error) throw r.error; return r.data; }),
     loadPlayers(),
-    fetchAll("scores", "player_id,game_id,play_date,score,details").then((s) => { scores = new Map(s.map((r) => [key(r), r])); }),
+    fetchAll("scores", "player_id,game_id,play_date,score,details").then((s) => { scores = new Map(s.map((r) => [key(r), tidyKrill(r)])); }),
   ]);
   allGames = g; games = g.filter((x) => x.active);
   render();
@@ -562,7 +638,7 @@ function subscribe() {
   sb.channel("lockitin-live")
     .on("postgres_changes", { event: "*", schema: "public", table: "scores" }, (p) => {
       if (p.eventType === "DELETE") { if (p.old && p.old.player_id) scores.delete(key(p.old)); else return loadAll(); }
-      else scores.set(key(p.new), p.new);
+      else scores.set(key(p.new), tidyKrill(p.new));
       render();
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "players" }, () => loadPlayers().then(render).catch(() => {}))
@@ -685,7 +761,8 @@ function wire() {
     const sp = t.closest("[data-saveperson]");
     if (sp) {
       const row = sp.closest(".prow");
-      const { error } = await sb.rpc("admin_update_player", { p_player: row.dataset.pid, p_avatar_url: row.querySelector('[data-k="pic"]').value, p_admin: row.querySelector('[data-k="admin"]').checked });
+      const cur = players[row.dataset.pid]?.avatar_url || "", typed = row.querySelector('[data-k="pic"]').value;
+      const { error } = await sb.rpc("admin_update_player", { p_player: row.dataset.pid, p_avatar_url: typed || (cur.startsWith("data:") ? cur : ""), p_admin: row.querySelector('[data-k="admin"]').checked });
       adminMsg(error ? errText(error, "Couldn't save that.") : "Saved.", !!error);
       if (!error) { await loadPlayers(); render(); }
     }
@@ -713,12 +790,28 @@ function wire() {
     await sb.rpc("leave_device");
     me = null; showWho();
   };
-  $("#saveMe").onclick = async () => {
+  // The LockItIn wordmark hops letter by letter when you hover or tap it.
+  $$(".brand").forEach((b) => {
+    const w = b.querySelector(".word"); if (!w) return;
+    const hop = () => { if (w.classList.contains("jump")) return; w.classList.add("jump"); setTimeout(() => w.classList.remove("jump"), 1050); };
+    b.addEventListener("pointerenter", hop); b.addEventListener("pointerdown", hop);
+  });
+  $("#picFile").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) openCrop(f); });
+  $("#picRemove").onclick = () => { $("#editPic").value = ""; showPicPreview(); saveMe("Photo removed."); };
+  $("#cropZoom").addEventListener("input", (e) => { if (crop.img) setZoom(+e.target.value); });
+  $("#cropUse").onclick = () => {
+    if (!crop.img) return;
+    $("#editPic").value = cropToDataUrl();
+    showPicPreview(); closeSheets(); saveMe("Looking good! ✨");
+  };
+  wireCrop();
+  $("#saveMe").onclick = () => saveMe("Looking good! ✨");
+  async function saveMe(okToast) {
     const m = $("#meMsg");
     const { error } = await sb.rpc("update_me", { p_name: $("#editName").value, p_color: st.editColor || me.color, p_avatar_url: $("#editPic").value });
     m.className = "msg" + (error ? " err" : ""); m.textContent = error ? errText(error, "Couldn't save.") : "Saved!";
-    if (!error) { await refreshMe(); await loadPlayers(); $("details.edit").open = false; render(); toast("Looking good! ✨"); }
-  };
+    if (!error) { await refreshMe(); await loadPlayers(); render(); toast(okToast); }
+  }
 
   const adminMsg = (t, err) => { $("#adminMsg").textContent = t; $("#adminMsg").className = "msg" + (err ? " err" : ""); };
   $("#gameRows").addEventListener("input", () => (adminDirty = true));
