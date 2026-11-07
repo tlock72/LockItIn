@@ -109,9 +109,66 @@ function confetti(colors) {
   })(start);
 }
 
+/* ---------- Krillion answer tiers ---------- */
+// Krillion's share text is "Krillion #115 🦐", the score, then one emoji per answer.
+// Worked out from a real result (415 = 2 Rare + 1 Plankton + 3 Deep Cut + 1 Schooler).
+// Blanks and One in a Krillion are learned the first time they appear, from the score.
+const KRILL_TIERS = [
+  { k: "blank", label: "Blanks", pts: 0, icon: "▫️" },
+  { k: "plankton", label: "Plankton", pts: 10, icon: "🫧" },
+  { k: "schooler", label: "Schoolers", pts: 30, icon: "🐟" },
+  { k: "rare", label: "Rare", pts: 60, icon: "🦑" },
+  { k: "deepcut", label: "Deep cuts", pts: 85, icon: "🏮" },
+  { k: "krillion", label: "One in a Krillion", pts: 100, icon: "🌟" },
+];
+const KRILL_BASE = { "🫧": "plankton", "🐟": "schooler", "🦑": "rare", "🏮": "deepcut" };
+function krillMap() {
+  const m = { ...KRILL_BASE };
+  for (const r of scores.values()) if (r.game_id === "krillion" && r.details && r.details.map) Object.assign(m, r.details.map);
+  return m;
+}
+function tierIcon(k) {
+  const m = krillMap();
+  return Object.keys(m).find((e) => m[e] === k) || KRILL_TIERS.find((t) => t.k === k).icon;
+}
+function graphemes(s) {
+  try { return [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(s)].map((x) => x.segment); }
+  catch (e) { return Array.from(s); }
+}
+function parseKrillion(text) {
+  const lines = String(text || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const hi = lines.findIndex((l) => /krillion/i.test(l));
+  const puzzle = hi >= 0 ? (lines[hi].match(/#\s*(\d+)/) || [])[1] : null;
+  let score = null, si = -1;
+  for (let i = hi + 1; i < lines.length; i++) {
+    const m = lines[i].match(/^([\d,]+)\s*(?:pts|points)?$/i);
+    if (m) { score = num(m[1]); si = i; break; }
+  }
+  if (score == null) return null;
+  const emo = lines.slice(si + 1).flatMap(graphemes).filter((g) => /\p{Extended_Pictographic}/u.test(g));
+  const map = krillMap(), tiers = Object.fromEntries(KRILL_TIERS.map((t) => [t.k, 0])), unknown = {};
+  for (const e of emo) { if (map[e]) tiers[map[e]]++; else unknown[e] = (unknown[e] || 0) + 1; }
+  const known = () => KRILL_TIERS.reduce((s, t) => s + tiers[t.k] * t.pts, 0);
+  const learned = {}, uk = Object.keys(unknown), rest = score - known();
+  const unused = KRILL_TIERS.filter((t) => !Object.values(map).includes(t.k));
+  if (uk.length === 1) {
+    const t = unused.find((t) => t.pts * unknown[uk[0]] === rest) || KRILL_TIERS.find((t) => t.pts * unknown[uk[0]] === rest);
+    if (t) { tiers[t.k] += unknown[uk[0]]; learned[uk[0]] = t.k; }
+  } else if (uk.length === 2) {
+    for (const [a, b] of [[uk[0], uk[1]], [uk[1], uk[0]]]) {
+      const pair = unused.flatMap((ta) => unused.filter((tb) => tb !== ta).map((tb) => [ta, tb])).find(([ta, tb]) => ta.pts * unknown[a] + tb.pts * unknown[b] === rest);
+      if (pair) { tiers[pair[0].k] += unknown[a]; tiers[pair[1].k] += unknown[b]; learned[a] = pair[0].k; learned[b] = pair[1].k; break; }
+    }
+  }
+  const counted = Object.values(tiers).reduce((s, n) => s + n, 0);
+  return { score, puzzle: puzzle ? +puzzle : null, line: emo.join(""), tiers, map: learned, ok: counted === emo.length && known() === score && emo.length > 0 };
+}
+const tierLine = (tiers) => KRILL_TIERS.filter((t) => tiers && tiers[t.k]).map((t) => `${tierIcon(t.k)} ${t.label} ×${tiers[t.k]}`).join(" · ");
+
 /* ---------- share-text parsing ---------- */
 function parseShare(gameId, text) {
   const t = text || "";
+  if (gameId === "krillion") { const k = parseKrillion(t); if (k) return k.score; }
   const specific = {
     maptap: [/final\s*score\s*[:\-]?\s*([\d,]+)/i],
     krillion: [/([\d,]+)\s*(?:pts|points)\b/i, /([\d,]+)\s*\/\s*700\b/, /score\s*[:\-]?\s*([\d,]+)/i, { re: /([\d,]+)\s*(?:m|meters|metres)\b/i, f: (v) => v / 10 }],
@@ -201,7 +258,7 @@ function greeting() {
 }
 function yesterdayResults() {
   const y = daysAgo(1);
-  return games.map((g) => ({ g, list: rankDay(rowsFor(g.id, y).filter((r) => r.play_date === y).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g) }));
+  return games.map((g) => ({ g, list: rankDay(rowsFor(g.id, y).filter((r) => r.play_date === y).map((r) => ({ uid: r.player_id, s: Number(r.score), d: r.details })), g) }));
 }
 
 function renderToday() {
@@ -222,6 +279,7 @@ function renderToday() {
         ${mine
           ? `<div class="mine"><span class="big">${fmt(mine.s)}</span>${g.max_score ? `<span class="of">/ ${fmt(g.max_score)}</span>` : ""}<span class="pill on">${mine.rank === 1 && list.length > 1 ? "👑 " : ""}#${mine.rank} of ${list.length}</span></div>`
           : `<div class="notyet">Not played yet</div>`}
+        ${(() => { const d = mine && scores.get(`${me.id}|${g.id}|${today}`)?.details; return d && d.line ? `<div class="emojiline" title="${esc(tierLine(d.tiers))}">${esc(d.line)}</div>` : ""; })()}
         <div class="played"><span class="stackav">${list.slice(0, 8).map((e) => av(e.uid, "s")).join("")}</span><span>${list.length} of ${fam} played today</span></div>
         <div class="leader">${top && list.length > 1 ? `👑 <b>${esc(nameOf(top.uid))}</b> leads with ${fmt(top.s)}` : top ? `<b>${esc(nameOf(top.uid))}</b> is first in with ${fmt(top.s)}` : "Nobody's in yet. Be first!"}</div>
         <button class="btn" type="button" data-post="${esc(g.id)}">${mine ? "Update my score" : "Lock in my score"}</button>
@@ -279,6 +337,26 @@ function renderBoards() {
     : `<div class="empty"><b>No ${esc(g.name)} scores ${days ? `in the last ${days} days` : "yet"}</b>Play today's ${esc(g.name)} and lock in your score to get on the board.</div>`;
   $("#boardNote").textContent = `A daily win needs at least two players. Form shows each person's last 10 ${g.name} scores. Tap a column to re-rank.`;
 
+  // Krillion: answer tiers (from pasted results)
+  const kw = $("#krill"), kh = $("#krillH");
+  kw.hidden = kh.hidden = g.id !== "krillion";
+  if (g.id === "krillion") {
+    const tally = {}, fam = Object.fromEntries(KRILL_TIERS.map((t) => [t.k, 0]));
+    for (const r of period) {
+      const t = r.details && r.details.tiers; if (!t) continue;
+      const row = (tally[r.player_id] = tally[r.player_id] || { games: 0, ...Object.fromEntries(KRILL_TIERS.map((x) => [x.k, 0])) });
+      row.games++;
+      for (const x of KRILL_TIERS) { row[x.k] += t[x.k] || 0; fam[x.k] += t[x.k] || 0; }
+    }
+    const ids = Object.keys(tally).sort((a, b) => tally[b].krillion - tally[a].krillion || tally[b].deepcut - tally[a].deepcut || tally[b].rare - tally[a].rare);
+    kh.textContent = "Krillion catches";
+    kw.innerHTML = ids.length
+      ? `<table class="catches"><thead><tr><th></th><th>Player</th>${KRILL_TIERS.map((t) => `<th title="${t.label} (${t.pts} pts)"><span class="ti">${tierIcon(t.k)}</span>${t.label}</th>`).join("")}<th>Games</th></tr></thead><tbody>
+        ${ids.map((u) => `<tr class="${u === me.id ? "me" : ""}"><td></td><td class="pl">${person(u)}</td>${KRILL_TIERS.map((t) => `<td class="${tally[u][t.k] ? "" : "zero"}">${tally[u][t.k]}</td>`).join("")}<td>${tally[u].games}</td></tr>`).join("")}
+        <tr class="famrow"><td></td><td class="pl">Family</td>${KRILL_TIERS.map((t) => `<td>${fam[t.k]}</td>`).join("")}<td>${ids.reduce((s, u) => s + tally[u].games, 0)}</td></tr></tbody></table>`
+      : `<div class="empty"><b>No answer tiers yet</b>Paste your Krillion result when you lock in your score and we'll count your Plankton, Schoolers, Rares, Deep Cuts and One in a Krillions.</div>`;
+  }
+
   // last 14 days
   const grid = $("#grid"), gh = $("#gridH");
   const bd = byDate(g.id, daysAgo(13)), dayList = [...Array(14)].map((_, i) => daysAgo(13 - i));
@@ -304,7 +382,11 @@ function renderFamily() {
   $("#myStats").innerHTML = games.map((g) => {
     const r = gameTable(g.id, 0).find((x) => x.uid === me.id);
     return `<div class="mystat" style="--gc:${gc(g.id)}"><span class="g">${esc(g.name)}</span>${r
-      ? `<span>Avg ${fmt(r.avg)} · Best ${fmt(r.best)}</span><span class="s">${r.wins} wins · ${r.played} played${r.streak ? ` · 🔥 ${r.streak}` : ""}</span>`
+      ? `<span>Avg ${fmt(r.avg)} · Best ${fmt(r.best)}</span><span class="s">${r.wins} wins · ${r.played} played${r.streak ? ` · 🔥 ${r.streak}` : ""}</span>${g.id === "krillion" ? (() => {
+          const tot = {}; for (const x of rowsFor("krillion")) if (x.player_id === me.id && x.details && x.details.tiers) for (const t of KRILL_TIERS) tot[t.k] = (tot[t.k] || 0) + (x.details.tiers[t.k] || 0);
+          const s = KRILL_TIERS.filter((t) => tot[t.k]).map((t) => `${tierIcon(t.k)} ${tot[t.k]}`).join("  ");
+          return s ? `<span class="s" title="Your answer tiers, all time">${s}</span>` : "";
+        })() : ""}`
       : `<span class="s">Not played yet</span>`}</div>`;
   }).join("");
   if (!$("details.edit").open) {
@@ -371,7 +453,7 @@ function openYesterday() {
     const win = list.filter((e) => e.rank === 1), rest = list.filter((e) => e.rank !== 1);
     const body = !list.length
       ? `<div class="yempty">Nobody played ${esc(g.name)}. 🦗</div>`
-      : `<div class="ywin">${win.map((e) => av(e.uid, "l")).join("")}<div><div class="who-n">${esc(listNames(win.map((e) => e.uid)))}</div><div class="sc">${fmt(win[0].s)}${g.max_score ? ` <span class="muted" style="font-size:15px">/ ${fmt(g.max_score)}</span>` : ""}</div>${list.length === 1 ? `<div class="note">Only player. Still counts in our hearts.</div>` : ""}</div></div>
+      : `<div class="ywin">${win.map((e) => av(e.uid, "l")).join("")}<div><div class="who-n">${esc(listNames(win.map((e) => e.uid)))}</div><div class="sc">${fmt(win[0].s)}${g.max_score ? ` <span class="muted" style="font-size:15px">/ ${fmt(g.max_score)}</span>` : ""}</div>${win[0].d && win[0].d.line ? `<div class="emojiline">${esc(win[0].d.line)}</div>` : ""}${list.length === 1 ? `<div class="note">Only player. Still counts in our hearts.</div>` : ""}</div></div>
          ${rest.length ? `<div class="yrest">${rest.map((e) => `<span>${MEDAL[e.rank] || "#" + e.rank} ${esc(nameOf(e.uid))} · ${fmt(e.s)}</span>`).join("")}</div>` : ""}`;
     return `<div class="ygame" style="--gc:${gc(g.id)}"><div class="ygame-h"><span>${esc(g.name)}</span><span>${list.length} played</span></div>${body}</div>`;
   }).join("");
@@ -401,7 +483,7 @@ async function loadAll() {
   const [g] = await Promise.all([
     sb.from("games").select("*").order("sort").then((r) => { if (r.error) throw r.error; return r.data; }),
     loadPlayers(),
-    fetchAll("scores", "player_id,game_id,play_date,score").then((s) => { scores = new Map(s.map((r) => [key(r), r])); }),
+    fetchAll("scores", "player_id,game_id,play_date,score,details").then((s) => { scores = new Map(s.map((r) => [key(r), r])); }),
   ]);
   allGames = g; games = g.filter((x) => x.active);
   render();
@@ -449,7 +531,14 @@ async function enterMain(welcome) {
 function prefill() {
   const v = parseShare(st.post, $("#paste").value), msg = $("#msg");
   msg.className = "msg";
-  if (v != null) { $("#score").value = v; msg.textContent = `Found it: ${fmt(v)}`; }
+  st.krill = st.post === "krillion" ? parseKrillion($("#paste").value) : null;
+  if (st.krill && !st.krill.line) st.krill = null;
+  if (v != null) {
+    $("#score").value = v;
+    msg.textContent = st.krill
+      ? `Found it: ${fmt(v)}. ${tierLine(st.krill.tiers)}${st.krill.ok ? "" : " (some answers I couldn't place)"}`
+      : `Found it: ${fmt(v)}`;
+  }
   else if ($("#paste").value.trim()) msg.textContent = "Couldn't spot a score in that. Type it in below.";
   else msg.textContent = "";
 }
@@ -468,7 +557,11 @@ async function saveScore() {
   if (date > todayStr()) return fail("That date hasn't happened yet!");
   const mineBefore = rowsFor(g.id).filter((r) => r.player_id === me.id && r.play_date !== date).map((r) => Number(r.score));
   const pb = mineBefore.length && mineBefore.every((s) => better(g, v, s));
-  const row = { player_id: me.id, game_id: g.id, play_date: date, score: v };
+  const row = { player_id: me.id, game_id: g.id, play_date: date, score: v, details: null };
+  if (g.id === "krillion" && st.krill && st.krill.score === v) {
+    const { tiers, line, puzzle, map, ok } = st.krill;
+    row.details = { tiers, line, puzzle, map, ok };
+  }
   $("#save").disabled = true;
   const { error } = await sb.from("scores").upsert(row, { onConflict: "player_id,game_id,play_date" });
   $("#save").disabled = false;

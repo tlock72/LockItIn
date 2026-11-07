@@ -51,7 +51,7 @@ The Supabase project is already set up and connected in [`config.js`](config.js)
 - **Score reading:** `parseShare()` in [`app.js`](app.js) reads the score from pasted text.
   - MapTap reads its "Final score" line.
   - TimeGuessr reads the "…/50,000" total.
-  - Krillion reads points, "/700", or depth in meters (depth ÷ 10).
+  - Krillion reads the score line under "Krillion #…" and counts each answer's tier from the emoji: 🫧 Plankton, 🐟 Schooler, 🦑 Rare, 🏮 Deep Cut. The emoji for Blanks and One in a Krillion are learned automatically the first time they appear. Tier counts appear in **Krillion catches** on the Krillion leaderboard and on your profile.
   - If a game changes its share text, add a pattern there.
 - **After changing app files:** bump `VERSION` in [`sw.js`](sw.js) so installed copies update.
 - **Try it locally:** run `python3 -m http.server 8000` in this folder and open http://localhost:8000.

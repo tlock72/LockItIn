@@ -240,6 +240,12 @@ td.spark svg{display:block}
 .grid td.cell{color:var(--muted)}
 .grid td.win{color:var(--gc);font-weight:800}
 .grid td.win::after{content:" 👑";font-size:11px}
+.emojiline{font-size:24px;letter-spacing:2px;line-height:1.2}
+.catches th{text-align:center;white-space:normal;min-width:62px;line-height:1.2}
+.catches th .ti{display:block;font-size:22px;letter-spacing:0;margin-bottom:2px}
+.catches td{text-align:center}
+.catches td.zero{color:var(--muted);font-weight:600}
+.catches tr.famrow td{font-weight:800;color:var(--gc);border-top:2px solid var(--line)}
 .empty{padding:30px 18px;text-align:center;color:var(--muted)}
 .empty b{color:var(--ink);display:block;font-family:var(--f-display);font-size:20px;margin-bottom:4px}
 
