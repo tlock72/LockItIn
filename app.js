@@ -527,6 +527,7 @@ function showPicPreview() {
 }
 function openCrop(file) {
   const msg = $("#cropMsg"); msg.textContent = ""; msg.className = "msg";
+  const use = $("#cropUse"); use.disabled = false; use.classList.remove("busy", "done"); use.textContent = "Use photo";
   if (!/^image\//.test(file.type || "image/")) { toast("That isn't a photo."); return; }
   const url = URL.createObjectURL(file), img = new Image();
   img.onload = () => {
@@ -809,20 +810,41 @@ function wire() {
     b.addEventListener("pointerenter", hop); b.addEventListener("pointerdown", hop);
   });
   $("#picFile").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) openCrop(f); });
-  $("#picRemove").onclick = () => { $("#editPic").value = ""; showPicPreview(); saveMe("Photo removed."); };
+  $("#picRemove").onclick = () => { const was = $("#editPic").value; $("#editPic").value = ""; showPicPreview(); saveMe({ toastText: "Photo removed.", photo: true, undo: was }); };
   $("#cropZoom").addEventListener("input", (e) => { if (crop.img) setZoom(+e.target.value); });
-  $("#cropUse").onclick = () => {
+  $("#cropUse").onclick = async () => {
     if (!crop.img) return;
-    $("#editPic").value = cropToDataUrl();
-    showPicPreview(); closeSheets(); saveMe("Looking good! ✨");
+    const was = $("#editPic").value;
+    $("#editPic").value = cropToDataUrl(); showPicPreview();
+    // Stay on the sheet with "Saving…" until the photo is really stored, so it's clear it worked.
+    const ok = await saveMe({ btn: $("#cropUse"), msg: $("#cropMsg"), toastText: "Photo saved! The whole family can see it now ✨", photo: true, undo: was });
+    if (ok) closeSheets();
   };
   wireCrop();
-  $("#saveMe").onclick = () => saveMe("Looking good! ✨");
-  async function saveMe(okToast) {
-    const m = $("#meMsg");
+  $("#saveMe").onclick = () => saveMe({ btn: $("#saveMe"), toastText: "Saved! Looking good ✨" });
+  let savedTimer;
+  async function saveMe({ btn, msg, toastText, photo, undo } = {}) {
+    const m = msg || $("#meMsg"), label = btn && btn.textContent;
+    m.className = "msg"; m.textContent = "";
+    if (btn) { btn.disabled = true; btn.classList.add("busy"); btn.textContent = "Saving…"; }
     const { error } = await sb.rpc("update_me", { p_name: $("#editName").value, p_color: st.editColor || me.color, p_avatar_url: $("#editPic").value });
-    m.className = "msg" + (error ? " err" : ""); m.textContent = error ? errText(error, "Couldn't save.") : "Saved!";
-    if (!error) { await refreshMe(); await loadPlayers(); render(); toast(okToast); }
+    if (error) {
+      if (undo !== undefined) { $("#editPic").value = undo; showPicPreview(); }
+      if (btn) { btn.disabled = false; btn.classList.remove("busy"); btn.textContent = label; }
+      m.className = "msg err"; m.textContent = errText(error, "Couldn't save. Check your connection and try again.");
+      return false;
+    }
+    await refreshMe(); await loadPlayers(); render();
+    if (btn) { btn.disabled = false; btn.classList.remove("busy"); btn.classList.add("done"); btn.textContent = "Saved ✓"; }
+    $("#meMsg").className = "msg ok"; $("#meMsg").textContent = photo ? "✓ Photo saved" : "✓ Saved";
+    $("#picPreview").classList.toggle("saved", !!photo);
+    const big = $("#meAvatar"); big.classList.remove("saved"); void big.offsetWidth; big.classList.add("saved");
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => { big.classList.remove("saved"); $("#picPreview").classList.remove("saved"); if (btn) { btn.classList.remove("done"); btn.textContent = label; } }, 3500);
+    toast(toastText);
+    if (photo && $("#editPic").value) confetti([safeColor(me.color), "#FFFFFF", "#F2B21B"]);
+    if (navigator.vibrate) navigator.vibrate(15);
+    return true;
   }
 
   const adminMsg = (t, err) => { $("#adminMsg").textContent = t; $("#adminMsg").className = "msg" + (err ? " err" : ""); };
