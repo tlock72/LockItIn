@@ -136,27 +136,29 @@ function graphemes(s) {
   catch (e) { return Array.from(s); }
 }
 function parseKrillion(text) {
-  const lines = String(text || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const hi = lines.findIndex((l) => /krillion/i.test(l));
-  const puzzle = hi >= 0 ? (lines[hi].match(/#\s*(\d+)/) || [])[1] : null;
-  let score = null, si = -1;
-  for (let i = hi + 1; i < lines.length; i++) {
-    const m = lines[i].match(/^([\d,]+)\s*(?:pts|points)?$/i);
-    if (m) { score = num(m[1]); si = i; break; }
-  }
-  if (score == null) return null;
-  const emo = lines.slice(si + 1).flatMap(graphemes).filter((g) => /\p{Extended_Pictographic}/u.test(g));
+  // Works whether the share keeps its line breaks or arrives squashed onto one line:
+  // "Krillion #115 🦐 / 415 / 🦑🫧🏮🏮🦑🐟🏮". The score is the first number after the
+  // header that isn't the puzzle number; the answer emojis are everything after it.
+  const t = String(text || "").replace(/[  -​  　﻿]/g, " ");
+  const hm = t.match(/krillion\s*(?:#\s*(\d+))?/i);
+  const puzzle = hm && hm[1] ? hm[1] : null;
+  const rest = hm ? t.slice(hm.index + hm[0].length) : t;
+  const sm = rest.match(/(^|[^\d#,.])(\d{1,3}(?:,\d{3})+|\d+)(?![\d,.])\s*(?:pts|points)?/i);
+  if (!sm) return null;
+  const score = num(sm[2]);
+  const after = rest.slice(sm.index + sm[0].length);
+  const emo = graphemes(after).filter((g) => /\p{Extended_Pictographic}/u.test(g));
   const map = krillMap(), tiers = Object.fromEntries(KRILL_TIERS.map((t) => [t.k, 0])), unknown = {};
   for (const e of emo) { if (map[e]) tiers[map[e]]++; else unknown[e] = (unknown[e] || 0) + 1; }
   const known = () => KRILL_TIERS.reduce((s, t) => s + tiers[t.k] * t.pts, 0);
-  const learned = {}, uk = Object.keys(unknown), rest = score - known();
+  const learned = {}, uk = Object.keys(unknown), left = score - known();
   const unused = KRILL_TIERS.filter((t) => !Object.values(map).includes(t.k));
   if (uk.length === 1) {
-    const t = unused.find((t) => t.pts * unknown[uk[0]] === rest) || KRILL_TIERS.find((t) => t.pts * unknown[uk[0]] === rest);
+    const t = unused.find((t) => t.pts * unknown[uk[0]] === left) || KRILL_TIERS.find((t) => t.pts * unknown[uk[0]] === left);
     if (t) { tiers[t.k] += unknown[uk[0]]; learned[uk[0]] = t.k; }
   } else if (uk.length === 2) {
     for (const [a, b] of [[uk[0], uk[1]], [uk[1], uk[0]]]) {
-      const pair = unused.flatMap((ta) => unused.filter((tb) => tb !== ta).map((tb) => [ta, tb])).find(([ta, tb]) => ta.pts * unknown[a] + tb.pts * unknown[b] === rest);
+      const pair = unused.flatMap((ta) => unused.filter((tb) => tb !== ta).map((tb) => [ta, tb])).find(([ta, tb]) => ta.pts * unknown[a] + tb.pts * unknown[b] === left);
       if (pair) { tiers[pair[0].k] += unknown[a]; tiers[pair[1].k] += unknown[b]; learned[a] = pair[0].k; learned[b] = pair[1].k; break; }
     }
   }
