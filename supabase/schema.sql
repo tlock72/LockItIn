@@ -41,9 +41,11 @@ create table if not exists scores (
   game_id text not null references games on delete cascade,
   play_date date not null,
   score numeric not null check (score >= 0),
+  details jsonb,              -- extra per-game info, e.g. Krillion answer tiers
   created_at timestamptz not null default now(),
   primary key (player_id, game_id, play_date)
 );
+alter table scores add column if not exists details jsonb;
 
 -- ---------- move older setups forward (invite codes and PINs are gone) ----------
 do $$ begin
