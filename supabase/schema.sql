@@ -1,0 +1,184 @@
+-- LockItIn database setup (family edition).
+-- Run this in Supabase: Dashboard → SQL Editor → New query → paste → Run.
+-- Safe to run again: it only adds what's missing and moves older setups forward.
+
+create extension if not exists pgcrypto;
+
+-- ---------- tables ----------
+
+create table if not exists games (
+  id text primary key,
+  name text not null,
+  url text,
+  better text not null default 'high' check (better in ('high', 'low')),
+  max_score numeric,
+  sort int not null default 0,
+  active boolean not null default true
+);
+
+-- One row per family member.
+create table if not exists players (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(name) between 1 and 24),
+  color text,
+  avatar_url text,           -- profile picture link; add later from the app or the dashboard
+  is_admin boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table players add column if not exists color text;
+alter table players add column if not exists avatar_url text;
+create unique index if not exists players_name_ci on players (lower(name));
+
+-- Which person each phone/computer is logged in as. One person can use several devices.
+create table if not exists devices (
+  user_id uuid primary key references auth.users on delete cascade,
+  player_id uuid not null references players on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists scores (
+  player_id uuid not null references players on delete cascade,
+  game_id text not null references games on delete cascade,
+  play_date date not null,
+  score numeric not null check (score >= 0),
+  created_at timestamptz not null default now(),
+  primary key (player_id, game_id, play_date)
+);
+
+-- ---------- move older setups forward (invite codes and PINs are gone) ----------
+do $$ begin
+  if exists (select 1 from information_schema.columns where table_name = 'players' and column_name = 'user_id') then
+    insert into devices (user_id, player_id)
+      select user_id, id from players where user_id is not null
+      on conflict (user_id) do nothing;
+    alter table players drop column user_id;
+  end if;
+end $$;
+alter table players drop column if exists pin_hash;
+drop function if exists join_group(text, text);
+drop function if exists reclaim_player(text, text);
+drop function if exists set_invite_code(text);
+drop function if exists whoami();
+drop table if exists settings;
+
+-- ---------- helpers ----------
+
+create or replace function my_player_id() returns uuid
+language sql stable security definer set search_path = public as $$
+  select player_id from devices where user_id = auth.uid()
+$$;
+
+create or replace function i_am_admin() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select p.is_admin from players p join devices d on d.player_id = p.id where d.user_id = auth.uid()), false)
+$$;
+
+-- ---------- row level security ----------
+
+alter table games   enable row level security;
+alter table players enable row level security;
+alter table devices enable row level security;  -- no policies: only the functions below touch it
+alter table scores  enable row level security;
+
+drop policy if exists games_read on games;
+create policy games_read on games for select to authenticated using (true);
+drop policy if exists games_admin on games;
+create policy games_admin on games for all to authenticated using (i_am_admin()) with check (i_am_admin());
+
+-- Everyone signed in can see the family list (that's how you pick yourself on a new device).
+drop policy if exists players_read on players;
+create policy players_read on players for select to authenticated using (true);
+
+drop policy if exists scores_read on scores;
+create policy scores_read on scores for select to authenticated using (my_player_id() is not null);
+drop policy if exists scores_write_own on scores;
+create policy scores_write_own on scores for insert to authenticated with check (player_id = my_player_id());
+drop policy if exists scores_update_own on scores;
+create policy scores_update_own on scores for update to authenticated using (player_id = my_player_id()) with check (player_id = my_player_id());
+drop policy if exists scores_delete_own on scores;
+create policy scores_delete_own on scores for delete to authenticated using (player_id = my_player_id() or i_am_admin());
+
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on games, scores to authenticated;
+revoke all on games, scores from anon;
+revoke all on players, devices from anon, authenticated;
+grant select on players to authenticated;
+
+-- ---------- actions the app calls ----------
+
+create or replace function whoami() returns table (id uuid, name text, color text, avatar_url text, is_admin boolean)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.name, p.color, p.avatar_url, p.is_admin
+  from players p join devices d on d.player_id = p.id where d.user_id = auth.uid()
+$$;
+
+-- New family member. The very first person becomes the admin.
+create or replace function join_family(p_name text, p_color text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v_name text := btrim(p_name); v_id uuid; v_first boolean;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if char_length(v_name) < 1 or char_length(v_name) > 24 then raise exception 'Pick a name between 1 and 24 characters'; end if;
+  if exists (select 1 from players where lower(name) = lower(v_name)) then
+    raise exception 'Someone is already called that. If it''s you, tap your name above';
+  end if;
+  select not exists (select 1 from players) into v_first;
+  insert into players (name, color, is_admin) values (v_name, p_color, v_first) returning id into v_id;
+  insert into devices (user_id, player_id) values (auth.uid(), v_id)
+    on conflict (user_id) do update set player_id = excluded.player_id;
+  return v_id;
+end $$;
+
+-- "That's me": log this device in as an existing family member.
+create or replace function claim_player(p_player uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  if not exists (select 1 from players where id = p_player) then raise exception 'That person isn''t in the family list'; end if;
+  insert into devices (user_id, player_id) values (auth.uid(), p_player)
+    on conflict (user_id) do update set player_id = excluded.player_id;
+end $$;
+
+-- "Not you?": log this device out.
+create or replace function leave_device() returns void
+language sql security definer set search_path = public as $$
+  delete from devices where user_id = auth.uid()
+$$;
+
+-- Change your own name, color or profile picture link.
+create or replace function update_me(p_name text, p_color text, p_avatar_url text) returns void
+language plpgsql security definer set search_path = public as $$
+declare v_me uuid := my_player_id(); v_name text := btrim(p_name);
+begin
+  if v_me is null then raise exception 'Pick who you are first'; end if;
+  if char_length(v_name) < 1 or char_length(v_name) > 24 then raise exception 'Pick a name between 1 and 24 characters'; end if;
+  if exists (select 1 from players where lower(name) = lower(v_name) and id <> v_me) then raise exception 'Someone is already called that'; end if;
+  update players set name = v_name, color = p_color, avatar_url = nullif(btrim(p_avatar_url), '') where id = v_me;
+end $$;
+
+-- Admins can set anyone's profile picture link and admin flag.
+create or replace function admin_update_player(p_player uuid, p_avatar_url text, p_admin boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not i_am_admin() then raise exception 'Only admins can do that'; end if;
+  update players set avatar_url = nullif(btrim(p_avatar_url), ''), is_admin = p_admin where id = p_player;
+end $$;
+
+drop function if exists set_admin(uuid, boolean);
+
+revoke all on function join_family(text, text), claim_player(uuid), leave_device(), update_me(text, text, text), admin_update_player(uuid, text, boolean) from public, anon;
+grant execute on function whoami(), join_family(text, text), claim_player(uuid), leave_device(), update_me(text, text, text), admin_update_player(uuid, text, boolean), my_player_id(), i_am_admin() to authenticated;
+
+-- ---------- live updates ----------
+do $$ begin alter publication supabase_realtime add table scores; exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table players; exception when duplicate_object then null; end $$;
+
+-- ---------- the family's games ----------
+insert into games (id, name, url, better, max_score, sort) values
+  ('krillion',   'Krillion',   'https://krillion.io',    'high', 700,   1),
+  ('maptap',     'MapTap',     'https://www.maptap.gg',  'high', 1000,  2),
+  ('timeguessr', 'TimeGuessr', 'https://timeguessr.com', 'high', 50000, 3)
+on conflict (id) do nothing;
+-- Farflung was in the first version; it's not one of the family's games.
+delete from games where id = 'farflung' and not exists (select 1 from scores where game_id = 'farflung');
+update games set sort = 2 where id = 'maptap';
