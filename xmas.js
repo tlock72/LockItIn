@@ -132,49 +132,124 @@ function jingle() {
     if (!a) return;
     const play = () => {
       if (a.currentTime < tuneEnd) return; // still playing: don't pile tunes on top of each other
-      // The opening hook of "Last Christmas" (Wham!), in D major, about 108 bpm, with sleigh bells
-      // and soft chords underneath (D, then B minor), like the record's intro.
-      const A4 = 440, B4 = 493.9, D5 = 587.3, E5 = 659.3, Fs5 = 740;
-      const tune = [[E5, 1], [E5, .5], [D5, 1.5], [0, .5], [A4, .5], [E5, .5], [E5, .5], [Fs5, .5], [D5, 1.5], [B4, .5], [B4, 1.5]];
-      const t0 = a.currentTime + 0.05, beat = 0.56;
+      // The opening hook of "Last Christmas" (Wham!) at the record's 107 bpm, in D major, on the
+      // record's kind of instruments: drum machine, synth bass, synth chords, a bright synth lead
+      // and sleigh bells, with a bit of reverb.
+      const beat = 60 / 107, t0 = a.currentTime + 0.06, out = bus();
+      const A4 = 440, D5 = 587.3, E5 = 659.3, Fs5 = 740;
+      const tune = [[E5, 1], [E5, .5], [D5, 1], [0, .5], [A4, .5], [E5, .5], [E5, .5], [Fs5, .5], [D5, 2]];
       let t = t0;
-      for (const [f, len] of tune) { if (f) bell(f, t); t += beat * len; }
-      pad([146.8, 185, 220], t0, beat * 3.5);              // D
-      pad([123.5, 146.8, 185], t0 + beat * 3.5, beat * 5);  // Bm
-      // sleigh-bell shakes on every half beat
-      for (let i = 0; i < 17; i++) shake(t0 + i * beat / 2);
-      tuneEnd = t;
-      idleSoon(t - a.currentTime + 1.5);
+      for (const [f, len] of tune) { if (f) lead(out, f, t, beat * len); t += beat * len; }
+      const bars = [[73.4, [293.7, 370, 440]], [61.7, [246.9, 293.7, 370]]]; // D, then B minor
+      bars.forEach(([root, chord], b) => {
+        const bt = t0 + b * 4 * beat;
+        synthChord(out, chord, bt, 4 * beat);
+        for (let i = 0; i < 8; i++) synthBass(out, i % 2 ? root * 2 : root, bt + i * beat / 2, beat / 2);
+        for (let i = 0; i < 4; i++) {
+          drum(out, i % 2 ? "snare" : "kick", bt + i * beat);
+          for (let h = 0; h < 2; h++) drum(out, "hat", bt + i * beat + h * beat / 2);
+        }
+      });
+      for (let i = 0; i < 16; i++) shake(out, t0 + i * beat / 2, i % 2 ? 0.5 : 1);
+      tuneEnd = t0 + 8 * beat;
+      idleSoon(tuneEnd - a.currentTime + 2);
     };
     // A phone's audio can still be waking up; start the tune once it is, so no notes get squashed.
     if (a.state === "running") play(); else a.resume().then(play, () => {});
   } catch (e) {}
 }
-let tuneEnd = 0;
-// soft synth chord, fading in and out
-function pad(freqs, t, len) {
-  for (const f of freqs) {
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.type = "triangle"; o.frequency.value = f;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.045, t + 0.12);
-    g.gain.setValueAtTime(0.045, t + len - 0.2); g.gain.exponentialRampToValueAtTime(0.0001, t + len + 0.3);
-    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + len + 0.35);
+let tuneEnd = 0, busCtx = null, busNodes = null;
+// Shared output: a gentle compressor plus a reverb send (the reverb is made from decaying noise).
+function bus() {
+  if (busCtx === ac) return busNodes;
+  const comp = ac.createDynamicsCompressor(), dry = ac.createGain(), rev = ac.createConvolver(), wet = ac.createGain();
+  comp.threshold.value = -14; comp.ratio.value = 4;
+  const len = ac.sampleRate * 1.8, ir = ac.createBuffer(2, len, ac.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+  rev.buffer = ir; wet.gain.value = 0.28; dry.gain.value = 0.8;
+  dry.connect(comp); rev.connect(wet).connect(comp); comp.connect(ac.destination);
+  busCtx = ac; busNodes = { dry, rev };
+  return busNodes;
+}
+function send(out, node, revAmt) {
+  node.connect(out.dry);
+  if (revAmt) { const g = ac.createGain(); g.gain.value = revAmt; node.connect(g).connect(out.rev); }
+}
+function env(g, t, peak, att, len, rel) {
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + att);
+  g.gain.setTargetAtTime(peak * 0.6, t + att, len * 0.5);
+  g.gain.setTargetAtTime(0.0001, t + len, rel / 4);
+}
+// Bright synth lead: two detuned saws and a square an octave down, through a filter, with vibrato.
+function lead(out, f, t, len) {
+  const g = ac.createGain(), lp = ac.createBiquadFilter(), vib = ac.createOscillator(), vg = ac.createGain();
+  lp.type = "lowpass"; lp.Q.value = 2;
+  lp.frequency.setValueAtTime(5000, t); lp.frequency.exponentialRampToValueAtTime(2200, t + 0.25);
+  vib.frequency.value = 5.5; vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(f * 0.006, t + 0.3);
+  vib.connect(vg); vib.start(t); vib.stop(t + len + 0.5);
+  for (const [type, mult, det, vol] of [["sawtooth", 1, -8, .5], ["sawtooth", 1, 8, .5], ["square", .5, 0, .3]]) {
+    const o = ac.createOscillator(), og = ac.createGain();
+    o.type = type; o.frequency.value = f * mult; o.detune.value = det; og.gain.value = vol;
+    vg.connect(o.frequency); o.connect(og).connect(lp); o.start(t); o.stop(t + len + 0.5);
+  }
+  env(g, t, 0.13, 0.015, len * 0.9, 0.35);
+  lp.connect(g); send(out, g, 0.5);
+}
+// Warm synth chords: detuned saws through a soft filter, held for the bar.
+function synthChord(out, freqs, t, len) {
+  const g = ac.createGain(), lp = ac.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = 1400; lp.Q.value = 0.7;
+  for (const f of freqs) for (const det of [-10, 10]) {
+    const o = ac.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = det;
+    o.connect(lp); o.start(t); o.stop(t + len + 0.6);
+  }
+  env(g, t, 0.035, 0.04, len - 0.05, 0.4);
+  lp.connect(g); send(out, g, 0.6);
+}
+// Synth bass: a plucky filtered saw.
+function synthBass(out, f, t, len) {
+  const o = ac.createOscillator(), g = ac.createGain(), lp = ac.createBiquadFilter();
+  o.type = "sawtooth"; o.frequency.value = f;
+  lp.type = "lowpass"; lp.Q.value = 4; lp.frequency.setValueAtTime(1100, t); lp.frequency.exponentialRampToValueAtTime(220, t + len);
+  env(g, t, 0.16, 0.008, len * 0.8, 0.08);
+  o.connect(lp).connect(g); send(out, g, 0); o.start(t); o.stop(t + len + 0.2);
+}
+function noise(len) {
+  const buf = ac.createBuffer(1, ac.sampleRate * len, ac.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const s = ac.createBufferSource(); s.buffer = buf; return s;
+}
+// 80s drum machine: kick, snare (with lots of reverb) and closed hi-hat.
+function drum(out, kind, t) {
+  const g = ac.createGain();
+  if (kind === "kick") {
+    const o = ac.createOscillator(); o.type = "sine";
+    o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(g); o.start(t); o.stop(t + 0.32); send(out, g, 0);
+  } else if (kind === "snare") {
+    const n = noise(0.25), bp = ac.createBiquadFilter(), o = ac.createOscillator(), og = ac.createGain();
+    bp.type = "bandpass"; bp.frequency.value = 1800; bp.Q.value = 0.8;
+    g.gain.setValueAtTime(0.32, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    o.type = "triangle"; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(160, t + 0.08);
+    og.gain.setValueAtTime(0.2, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    n.connect(bp).connect(g); o.connect(og).connect(g); n.start(t); o.start(t); o.stop(t + 0.12);
+    send(out, g, 0.9);
+  } else {
+    const n = noise(0.05), hp = ac.createBiquadFilter();
+    hp.type = "highpass"; hp.frequency.value = 8000;
+    g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+    n.connect(hp).connect(g); n.start(t); send(out, g, 0.1);
   }
 }
-function bell(f, t) {
-  for (const [mult, vol, dec] of [[1, .22, .9], [2, .07, .5], [2.76, .04, .3], [5.4, .02, .2]]) {
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.type = "sine"; o.frequency.value = f * mult;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
-    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dec + 0.05);
-  }
-}
-function shake(t) {
-  const len = 0.08, buf = ac.createBuffer(1, ac.sampleRate * len, ac.sampleRate), d = buf.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-  const s = ac.createBufferSource(), hp = ac.createBiquadFilter(), g = ac.createGain();
-  s.buffer = buf; hp.type = "highpass"; hp.frequency.value = 7000; g.gain.value = 0.05;
-  s.connect(hp).connect(g).connect(ac.destination); s.start(t);
+// Sleigh bells: a jingly burst of filtered noise.
+function shake(out, t, vol = 1) {
+  const n = noise(0.12), bp = ac.createBiquadFilter(), g = ac.createGain();
+  bp.type = "bandpass"; bp.frequency.value = 9000; bp.Q.value = 1.5;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09 * vol, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+  n.connect(bp).connect(g); n.start(t); send(out, g, 0.3);
 }
 
 /* ---------- Santa's sleigh ---------- */
