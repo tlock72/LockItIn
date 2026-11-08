@@ -1387,7 +1387,6 @@ function wirePull() {
     mode = "";
     if (d < LINE) { spring(0); setTimeout(() => { if (!busy && !d) reset(); }, 420); return; }
     busy = true; spring(HOLD);
-    if (XMAS) window.xmas.jingle();
     ptr.classList.remove("ready"); ptr.classList.add("busy");
     label.textContent = XMAS ? "Santa's checking the scores…" : "Locking in fresh scores…"; $("#ptrStatus").textContent = "Refreshing";
     navigator.serviceWorker?.getRegistration?.().then((r) => r && r.update()).catch(() => {});
