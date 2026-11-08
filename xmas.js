@@ -133,8 +133,8 @@ function jingle() {
     const play = () => {
       if (a.currentTime < tuneEnd) return; // still playing: don't pile tunes on top of each other
       // The first line of the "Last Christmas" (Wham!) chorus at the record's 107 bpm, in D major,
-      // over its chords (D, Bm, Em, A): synth lead doubled by a glockenspiel, synth chords, synth
-      // bass, drum machine, sleigh bells on every 16th note, and a twinkly chime run at the end.
+      // over its chords (D, Bm, Em, A), on the record's line-up: an 80s polysynth lead and chords
+      // (Juno-style, with chorus), synth bass, LinnDrum-style drum machine and sleigh bells.
       const beat = 60 / 107, t0 = a.currentTime + 0.06, out = bus();
       const A4 = 440, B4 = 493.9, Cs5 = 554.4, D5 = 587.3, E5 = 659.3, Fs5 = 740;
       const tune = [
@@ -144,7 +144,7 @@ function jingle() {
         [D5, .5], [Cs5, .5], [B4, 3],                               // it a-way
       ];
       let t = t0;
-      for (const [f, len] of tune) { lead(out, f, t, beat * len); glock(out, f * 2, t); t += beat * len; }
+      for (const [f, len] of tune) { lead(out, f, t, beat * len); t += beat * len; }
       const bars = [[73.4, [293.7, 370, 440]], [61.7, [246.9, 293.7, 370]], [82.4, [246.9, 329.6, 392]], [55, [220, 277.2, 329.6]]];
       bars.forEach(([root, chord], b) => {
         const bt = t0 + b * 4 * beat, last = b === bars.length - 1;
@@ -156,8 +156,6 @@ function jingle() {
         }
       });
       for (let i = 0; i < 52; i++) shake(out, t0 + i * beat / 4, i % 4 === 0 ? 1 : i % 2 ? 0.35 : 0.6);
-      // twinkle: a quick rising chime run over the last chord
-      [A4, Cs5, E5, A4 * 2, Cs5 * 2, E5 * 2].forEach((f, i) => glock(out, f * 2, t0 + 13 * beat + i * 0.07, 0.7));
       tuneEnd = t0 + 16 * beat;
       idleSoon(tuneEnd - a.currentTime + 2);
     };
@@ -202,15 +200,6 @@ function lead(out, f, t, len) {
   }
   env(g, t, 0.13, 0.015, len * 0.9, 0.35);
   lp.connect(g); send(out, g, 0.5);
-}
-// Glockenspiel: a bright metal-bar ping that rings on.
-function glock(out, f, t, vol = 1) {
-  for (const [mult, v, dec] of [[1, .07, 1.4], [2.76, .02, .5], [5.4, .01, .25]]) {
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.type = "sine"; o.frequency.value = f * mult;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
-    o.connect(g); send(out, g, 0.5); o.start(t); o.stop(t + dec + 0.05);
-  }
 }
 // Warm synth chords: detuned saws through a soft filter, held for the bar.
 function synthChord(out, freqs, t, len) {
