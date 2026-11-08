@@ -1,9 +1,10 @@
 // LockItIn service worker: keeps the app shell available offline and loads fast.
 // Bump VERSION whenever you change app files so phones pick up the update.
-const VERSION = "lockitin-v21";
+const VERSION = "lockitin-v22";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "config.js",
-  "manifest.webmanifest", "icons/icon.svg", "icons/glyph.svg", "icons/icon-192.png", "icons/apple-touch-icon.png"
+  "manifest.webmanifest", "icons/icon.svg", "icons/glyph.svg", "icons/icon-192.png", "icons/apple-touch-icon.png",
+  "xmas.css", "xmas.js", "icons/icon-xmas.svg", "icons/santa.svg", "icons/santa-hat.svg", "icons/xmas-192.png", "icons/xmas-apple-touch-icon.png"
 ];
 
 self.addEventListener("install", (e) => {

@@ -11,6 +11,9 @@ const ICONS = {
   timeguessr: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/>',
 };
 const MEDAL = { 1: "🥇", 2: "🥈", 3: "🥉" };
+// Christmas edition (xmas.css / xmas.js). Remove class="xmas" from <body> to switch it off.
+const XMAS = document.body.classList.contains("xmas") && !!window.xmas;
+const XMAS_COLORS = ["#C8102E", "#E3283E", "#1E8449", "#2FA866", "#FFD24A", "#E8A317", "#FFFFFF"];
 
 let sb = null;
 let me = null;                // {id, name, color, avatar_url, is_admin}
@@ -97,19 +100,23 @@ function confetti(colors) {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const c = $("#confetti"), ctx = c.getContext("2d"), dpr = window.devicePixelRatio || 1;
   c.width = innerWidth * dpr; c.height = innerHeight * dpr; ctx.scale(dpr, dpr);
-  const pal = colors && colors.length ? colors : COLORS;
+  const pal = XMAS ? [...XMAS_COLORS, ...(colors || []).filter((x) => !/^#5B3DF5$/i.test(x))] : colors && colors.length ? colors : COLORS;
   const parts = Array.from({ length: 140 }, () => ({
     x: innerWidth / 2 + (Math.random() - 0.5) * 120, y: innerHeight * 0.35,
     vx: (Math.random() - 0.5) * 13, vy: -Math.random() * 13 - 4,
     w: 6 + Math.random() * 6, h: 8 + Math.random() * 8, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
     c: pal[Math.floor(Math.random() * pal.length)],
+    k: XMAS ? ["rect", "flake", "star", "star"][Math.floor(Math.random() * 4)] : "rect",
   }));
   const start = performance.now();
   (function frame(t) {
     ctx.clearRect(0, 0, innerWidth, innerHeight);
     for (const p of parts) {
       p.vy += 0.38; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.r += p.vr;
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+      if (p.k === "star") { window.xmas.star(ctx, p.x, p.y, p.w * 0.9, p.r, p.c, 1); continue; }
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r);
+      if (p.k === "flake") window.xmas.flakeShape(ctx, p.w * 0.8, p.c === "#FFFFFF" ? "#BFD3EA" : p.c); else { ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); }
+      ctx.restore();
     }
     if (t - start < 2200) requestAnimationFrame(frame); else ctx.clearRect(0, 0, innerWidth, innerHeight);
   })(start);
@@ -360,6 +367,7 @@ function render() {
 
 function greeting() {
   const h = new Date().getHours();
+  if (XMAS) return h < 5 ? "Up late like Santa" : h < 12 ? "Merry morning" : h < 17 ? "Jolly afternoon" : "Festive evening";
   return h < 5 ? "Up late" : h < 12 ? "Morning" : h < 17 ? "Afternoon" : "Evening";
 }
 function yesterdayResults() {
@@ -1099,7 +1107,10 @@ async function saveScore() {
   const leading = mine && mine.rank === 1 && dayList.length > 1;
   closeSheets();
   if (comment && !pb && !leading) toast(`${g.name} locked in: ${fmt(v)} 🔒 · 💬 comment posted`); else
-  toast(pb ? `New personal best in ${g.name}! 🎉` : leading ? `You're top of the family in ${g.name}! 👑` : `${g.name} locked in: ${fmt(v)} 🔒`);
+  toast(XMAS
+    ? (pb ? `Ho Ho Ho! New personal best in ${g.name}! 🎁` : leading ? `Ho Ho Ho! You're top of the family in ${g.name}! 🎅` : `Ho Ho Ho! ${g.name} locked in: ${fmt(v)} 🎁`)
+    : (pb ? `New personal best in ${g.name}! 🎉` : leading ? `You're top of the family in ${g.name}! 👑` : `${g.name} locked in: ${fmt(v)} 🔒`));
+  if (XMAS) setTimeout(window.xmas.sleigh, 600);
   confetti(pb || leading ? ["#F2B21B", "#FFD95A", safeColor(me.color)] : [safeColor(me.color), "#FFFFFF", "#5B3DF5"]);
   if (navigator.vibrate) navigator.vibrate(pb || leading ? [20, 40, 20] : 15);
   checkWins(); render();
@@ -1280,6 +1291,8 @@ function wire() {
 // let go past the line and it snaps shut, the dots orbit while scores reload, then burst.
 function wirePull() {
   const sc = $("#scroller"), ptr = $("#ptr"), label = $("#ptrLabel");
+  const PULL = XMAS ? "Pull for a Ho Ho Ho" : "Pull to refresh";
+  label.textContent = PULL;
   const LINE = 80, HOLD = 84, MAX = 140;
   let y0 = 0, x0 = 0, d = 0, mode = "", busy = false, raf = 0;
   const paint = () => {
@@ -1290,14 +1303,14 @@ function wirePull() {
     if (busy) return; // while refreshing, the lock's own animation owns the classes and label
     ptr.classList.toggle("c1", p > 0.3); ptr.classList.toggle("c2", p > 0.6); ptr.classList.toggle("c3", p >= 1);
     const ready = p >= 1;
-    if (ready !== ptr.classList.contains("ready")) { ptr.classList.toggle("ready", ready); label.textContent = ready ? "Let go to lock it in 🔒" : "Pull to refresh"; }
+    if (ready !== ptr.classList.contains("ready")) { ptr.classList.toggle("ready", ready); label.textContent = ready ? (XMAS ? "Let go… Ho Ho Ho! 🎅" : "Let go to lock it in 🔒") : PULL; }
   };
   const set = (v) => { d = v; if (!raf) raf = requestAnimationFrame(paint); };
   const spring = (to) => {
     sc.classList.add("springing"); ptr.classList.add("springing"); set(to);
     setTimeout(() => { sc.classList.remove("springing"); ptr.classList.remove("springing"); }, 450);
   };
-  const reset = () => { ptr.className = "ptr"; sc.classList.remove("pulling"); label.textContent = "Pull to refresh"; };
+  const reset = () => { ptr.className = "ptr"; sc.classList.remove("pulling"); label.textContent = PULL; };
 
   sc.addEventListener("touchstart", (e) => {
     if (busy || e.touches.length !== 1 || sc.scrollTop > 0) { mode = "no"; return; }
@@ -1322,12 +1335,12 @@ function wirePull() {
     if (d < LINE) { spring(0); setTimeout(() => { if (!busy && !d) reset(); }, 420); return; }
     busy = true; spring(HOLD);
     ptr.classList.remove("ready"); ptr.classList.add("busy");
-    label.textContent = "Locking in fresh scores…"; $("#ptrStatus").textContent = "Refreshing";
+    label.textContent = XMAS ? "Santa's checking the scores…" : "Locking in fresh scores…"; $("#ptrStatus").textContent = "Refreshing";
     navigator.serviceWorker?.getRegistration?.().then((r) => r && r.update()).catch(() => {});
     let ok = true;
     try { await Promise.all([loadAll(), new Promise((r) => setTimeout(r, 900))]); } catch (err) { ok = false; }
     ptr.classList.remove("busy"); ptr.classList.add(ok ? "done" : "fail");
-    label.textContent = ok ? "Fresh! ✨" : "Couldn't refresh. Try again?";
+    label.textContent = ok ? (XMAS ? "Ho Ho Ho! Fresh 🎄" : "Fresh! ✨") : "Couldn't refresh. Try again?";
     $("#ptrStatus").textContent = ok ? "Scores up to date" : "Couldn't refresh";
     setTimeout(() => {
       spring(0);

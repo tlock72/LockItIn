@@ -5,25 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LockItIn</title>
 <meta name="description" content="The family leaderboard for Krillion, MapTap and TimeGuessr.">
-<meta name="theme-color" content="#5B3DF5" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#120F24" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#C8102E" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C1A15" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="LockItIn">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=3">
+<link rel="icon" href="icons/icon-xmas.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/xmas-apple-touch-icon.png?v=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Nunito:wght@500;600;700;800&display=swap">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="xmas.css">
 </head>
-<body>
+<body class="xmas">
 
 <!-- Loading -->
 <section id="screen-loading" class="screen center">
   <div class="brand big"><span class="logo" aria-hidden="true"></span><span class="word" role="img" aria-label="LockItIn"><span aria-hidden="true">L</span><span aria-hidden="true">o</span><span aria-hidden="true">c</span><span aria-hidden="true">k</span><span aria-hidden="true">I</span><span aria-hidden="true">t</span><span aria-hidden="true">I</span><span aria-hidden="true">n</span></span></div>
-  <p class="muted">Warming up the scoreboard…</p>
+  <p class="muted">Warming up Santa's sleigh… Ho Ho Ho!</p>
 </section>
 
 <!-- Not configured -->
@@ -213,7 +214,7 @@
         <div class="row between"><label class="label" for="comment">Add a comment <span class="opt">(optional)</span></label><span class="note" id="commentLeft"></span></div>
         <textarea id="comment" class="comment" maxlength="280" rows="2" placeholder="Brag, moan or blame the map…"></textarea>
       </div>
-      <button class="btn big" id="save" type="button">Lock it in 🔒</button>
+      <button class="btn big" id="save" type="button">Lock it in 🎁</button>
       <p class="msg" id="msg" role="status"></p>
     </div>
   </div>
@@ -269,6 +270,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
+<script src="xmas.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

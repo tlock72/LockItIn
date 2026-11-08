@@ -1,0 +1,140 @@
+/* LockItIn Christmas edition. Everything here only applies while <body class="xmas">.
+   To switch Christmas off: remove class="xmas" from <body> (xmas.css and xmas.js can stay). */
+
+/* ---------- colours: Santa red, holly green, tinsel gold ---------- */
+body.xmas{
+  --bg:#FBF3EA; --surface:#FFFFFF; --ink:#2A1518; --muted:#7D6466; --line:#F0DFD5; --soft:#F8E8E1;
+  --accent:#C8102E; --accent-2:#1E8449; --accent-ink:#FFFFFF; --bad:#B42318; --ok:#1E8449;
+  --gold:#E8A317; --silver:#A9B2C3; --bronze:#C9824A;
+  --krillion:#D6336C; --maptap:#1E8449; --timeguessr:#D98E04; --other:#2B7BB9;
+  --shadow:0 1px 0 rgba(60,20,20,.04), 0 8px 24px -12px rgba(140,20,40,.28);
+  --snow:#A9BFD9; --red:#C8102E; --red-dk:#7A0A1C; --green:#1E8449; --green-dk:#0E4F2C;
+}
+@media (prefers-color-scheme: dark){body.xmas{
+  --bg:#0C1A15; --surface:#14271F; --ink:#F6EFE6; --muted:#A8BDB1; --line:#244031; --soft:#1B3328;
+  --accent:#E3283E; --accent-2:#3FCB7E; --accent-ink:#FFFFFF; --bad:#FF7A70; --ok:#3FCB7E;
+  --gold:#FFC23D; --silver:#C3CAD8; --bronze:#E3A46E;
+  --krillion:#F0507A; --maptap:#2FA866; --timeguessr:#E9A21B; --other:#4FA3E0;
+  --shadow:0 1px 0 rgba(0,0,0,.2), 0 10px 30px -14px rgba(0,0,0,.6);
+  --snow:#FFFFFF; --red:#D7263D; --red-dk:#6E0818; --green:#2FA866; --green-dk:#0A3D22;
+}}
+body.xmas{background:var(--bg)}
+
+/* snow falls behind the content; cards stay solid on top */
+#snow{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.xmas .screen,.xmas #main{position:relative;z-index:1}
+.xmas .screen{background:transparent}
+.xmas #confetti{z-index:70}
+
+/* ---------- Santa hats ---------- */
+.xmas .hero-logo::before{content:"";position:absolute;z-index:2;left:-13%;top:-21%;width:54%;aspect-ratio:64/56;
+  background:url("icons/santa-hat.svg") center/contain no-repeat;transform:rotate(-24deg);filter:drop-shadow(0 4px 6px rgba(0,0,0,.25))}
+.xmas .hero-logo{background:repeating-conic-gradient(from 0deg,var(--red) 0 12deg,#FFFFFF 12deg 24deg);box-shadow:0 14px 30px -14px var(--red)}
+.xmas .hero-lock{background-color:var(--green)}
+.xmas .logo{background-color:var(--red)}
+/* the leader wears the hat instead of the crown */
+.xmas .crowned::before{content:"";width:30px;height:26px;top:-19px;left:46%;background:url("icons/santa-hat.svg") center/contain no-repeat;transform:translateX(-50%) rotate(-14deg)}
+.xmas .champav.crowned::before{top:-14px;width:32px;height:28px}
+.xmas .me-btn{position:relative}
+.xmas .me-btn::before{content:"";position:absolute;z-index:1;top:-9px;left:-7px;width:22px;height:19px;background:url("icons/santa-hat.svg") center/contain no-repeat;transform:rotate(-22deg);pointer-events:none}
+.xmas .topbar .word span:first-child{position:relative}
+.xmas .topbar .word span:first-child::before{content:"";position:absolute;left:-6px;top:-8px;width:20px;height:17px;background:url("icons/santa-hat.svg") center/contain no-repeat;transform:rotate(-20deg)}
+.xmas .who .av{position:relative;overflow:visible}
+.xmas .who .av img{border-radius:50%}
+
+/* ---------- fairy lights along the top bar ---------- */
+.xmas .topbar{border-bottom-color:transparent}
+.lights{position:absolute;left:0;right:0;bottom:-13px;height:22px;pointer-events:none;overflow:hidden;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='10'%3E%3Cpath d='M0 1Q17 10 34 1' fill='none' stroke='%23305A42' stroke-width='1.6'/%3E%3C/svg%3E") 0 0/34px 10px repeat-x}
+.bulb{position:absolute;top:4px;width:8px;height:12px;margin-left:-4px;border-radius:50% 50% 50% 50%/40% 40% 60% 60%;background:var(--bc);
+  box-shadow:0 0 8px 2px color-mix(in srgb,var(--bc) 70%,transparent);transform:rotate(var(--r,0deg))}
+.bulb::before{content:"";position:absolute;left:1.5px;top:-3px;width:5px;height:4px;border-radius:1px;background:#4C5E54}
+@media (prefers-reduced-motion:no-preference){.bulb{animation:twinkle var(--t,1.6s) ease-in-out var(--dl,0s) infinite alternate}}
+@keyframes twinkle{from{opacity:1;filter:brightness(1.15)}to{opacity:.35;box-shadow:none;filter:brightness(.8)}}
+
+/* ---------- the big HO HO HO ---------- */
+.hohoho{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px;width:100%;text-align:left;border:0;cursor:pointer;
+  color:#fff;border-radius:var(--r);padding:12px 16px 16px;overflow:hidden;font:inherit;
+  background:radial-gradient(circle at 12% 18%,rgba(255,255,255,.22) 0 2px,transparent 3px) 0 0/38px 34px,
+    radial-gradient(circle at 70% 60%,rgba(255,255,255,.18) 0 1.5px,transparent 2.5px) 0 0/29px 31px,
+    linear-gradient(120deg,var(--red-dk) 0%,var(--red) 55%,#E8414F 100%);
+  box-shadow:0 14px 30px -14px var(--red),inset 0 0 0 2px rgba(255,214,120,.35)}
+.hohoho::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:12px;pointer-events:none;
+  background:radial-gradient(circle at 10px 12px,#fff 9px,transparent 10px) 0 0/20px 12px repeat-x;opacity:.95}
+.hohoho:active{transform:scale(.99)}
+.santa{width:76px;height:76px;flex:none;background:url("icons/santa.svg") center/contain no-repeat;filter:drop-shadow(0 6px 8px rgba(0,0,0,.3));transform-origin:50% 90%}
+.ho-text{display:grid;gap:0;min-width:0}
+.ho-words{display:flex;flex-wrap:nowrap;gap:.18em;font-family:var(--f-display);font-weight:800;font-size:clamp(38px,11vw,58px);line-height:1;letter-spacing:-.02em;white-space:nowrap}
+.ho{display:inline-block;color:#fff;text-shadow:0 3px 0 var(--red-dk),0 6px 14px rgba(0,0,0,.25);transform:rotate(var(--tilt,0deg))}
+.ho:nth-child(1){--tilt:-6deg}
+.ho:nth-child(2){--tilt:4deg;color:#FFD24A}
+.ho:nth-child(3){--tilt:-3deg}
+.ho-sub{font-weight:800;font-size:14px;opacity:.95;margin-top:4px;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ho-sub b{font-family:var(--f-display);font-size:18px;color:#FFD24A}
+.holly{position:absolute;right:-6px;top:-6px;width:64px;height:52px;pointer-events:none;opacity:.95}
+@media (prefers-reduced-motion:no-preference){
+  .ho{animation:hoWave 3.2s ease-in-out infinite}
+  .ho:nth-child(2){animation-delay:.18s}.ho:nth-child(3){animation-delay:.36s}
+  .santa{animation:santaRock 3.2s ease-in-out infinite}
+  .hohoho.laugh .ho{animation:hoJump .6s cubic-bezier(.3,1.6,.5,1) both}
+  .hohoho.laugh .ho:nth-child(2){animation-delay:.2s}.hohoho.laugh .ho:nth-child(3){animation-delay:.4s}
+  .hohoho.laugh .santa{animation:belly .9s ease-in-out both}
+}
+@keyframes hoWave{0%,70%,100%{transform:rotate(var(--tilt)) translateY(0)}80%{transform:rotate(calc(var(--tilt) * -1)) translateY(-6px)}90%{transform:rotate(var(--tilt)) translateY(1px)}}
+@keyframes hoJump{0%{transform:rotate(var(--tilt))}35%{transform:rotate(calc(var(--tilt) * -2.5)) translateY(-.4em) scale(1.18)}70%{transform:rotate(var(--tilt)) translateY(2px) scale(1.06,.92)}100%{transform:rotate(var(--tilt))}}
+@keyframes santaRock{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(5deg)}}
+@keyframes belly{0%,100%{transform:none}15%,45%,75%{transform:rotate(-9deg) translateY(-4px) scale(1.06)}30%,60%,90%{transform:rotate(9deg) translateY(1px) scale(.98,1.04)}}
+
+/* Today has one more row now: greeting, Ho Ho Ho, yesterday, cards */
+.xmas #tab-today{grid-template-rows:auto auto auto minmax(0,1fr)}
+@media (max-width:420px){.santa{width:62px;height:62px}.hohoho{padding:10px 14px 15px;gap:10px}}
+
+/* Ho Ho Ho on the "Who's playing?" screen */
+.who-ho{background:none;border:0;padding:0;cursor:pointer;color:var(--red);font:inherit}
+.who-ho .ho-words{font-size:clamp(48px,15vw,84px);justify-content:center}
+.who-ho .ho{color:var(--red);text-shadow:0 4px 0 color-mix(in srgb,var(--red) 40%,#000),0 8px 20px rgba(0,0,0,.18)}
+.who-ho .ho:nth-child(2){color:var(--green);text-shadow:0 4px 0 var(--green-dk),0 8px 20px rgba(0,0,0,.18)}
+.who-ho.laugh .ho{animation:hoJump .6s cubic-bezier(.3,1.6,.5,1) both}
+.who-ho.laugh .ho:nth-child(2){animation-delay:.2s}.who-ho.laugh .ho:nth-child(3){animation-delay:.4s}
+.xmas #screen-who .hero-logo{margin-top:14px}
+
+/* ---------- festive panels ---------- */
+.xmas .yesterday{background:radial-gradient(circle at 20% 30%,rgba(255,255,255,.16) 0 1.5px,transparent 2.5px) 0 0/26px 24px,
+  linear-gradient(115deg,var(--green-dk) 0%,var(--green) 60%,#2EA463 100%);box-shadow:0 12px 28px -14px var(--green)}
+.xmas .yhead{background:linear-gradient(115deg,var(--green-dk) 0%,var(--green) 60%,#2EA463 100%)}
+.xmas .gtop{background-image:repeating-linear-gradient(-45deg,rgba(255,255,255,.09) 0 8px,transparent 8px 16px)}
+.xmas .sheet-head{background-image:repeating-linear-gradient(-45deg,rgba(255,255,255,.09) 0 10px,transparent 10px 20px)}
+.xmas .yhead{background-image:repeating-linear-gradient(-45deg,rgba(255,255,255,.09) 0 10px,transparent 10px 20px),linear-gradient(115deg,var(--green-dk) 0%,var(--green) 60%,#2EA463 100%)}
+/* candy-cane stripes on the main button */
+.xmas .btn.big{background-image:repeating-linear-gradient(-45deg,rgba(255,255,255,.14) 0 12px,transparent 12px 24px)}
+.xmas .tabbar{border-top:3px solid transparent;border-image:repeating-linear-gradient(90deg,var(--red) 0 14px,#fff 14px 28px,var(--green) 28px 42px,#fff 42px 56px) 3}
+@media (prefers-color-scheme: dark){.xmas .tabbar{border-image:repeating-linear-gradient(90deg,var(--red) 0 14px,var(--surface) 14px 28px,var(--green) 28px 42px,var(--surface) 42px 56px) 3}}
+.xmas .tabbar button[aria-current="page"] svg{fill:color-mix(in srgb,var(--accent) 22%,transparent)}
+
+/* ---------- Santa's sleigh flying past ---------- */
+.sleigh{position:fixed;z-index:65;left:0;top:calc(env(safe-area-inset-top,0px) + 74px);width:230px;height:auto;pointer-events:none;color:var(--ink);
+  transform:translateX(-260px);opacity:0}
+.sleigh.fly{animation:fly var(--dur,6s) linear forwards}
+.sleigh.fly .sl-body{animation:bobble .7s ease-in-out infinite alternate}
+.sleigh .trail{fill:#FFD24A}
+.sleigh.fly .trail{animation:sparkle .5s steps(2) infinite}
+@keyframes fly{0%{transform:translate(-260px,30px) rotate(-6deg);opacity:1}50%{transform:translate(calc(50vw - 115px),-6px) rotate(-3deg)}100%{transform:translate(calc(100vw + 40px),24px) rotate(-8deg);opacity:1}}
+@keyframes bobble{from{transform:translateY(-3px)}to{transform:translateY(3px)}}
+@keyframes sparkle{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.sleigh{display:none}}
+
+/* the "Ho Ho Ho!" speech bubble that pops out of the Santa */
+.ho-pop{position:fixed;z-index:66;pointer-events:none;font-family:var(--f-display);font-weight:800;font-size:28px;color:var(--red);
+  background:#fff;padding:6px 14px;border-radius:20px;box-shadow:0 10px 30px -10px rgba(0,0,0,.4);animation:hoPop 1.4s ease-out forwards;white-space:nowrap}
+@keyframes hoPop{0%{transform:translate(-50%,10px) scale(.4);opacity:0}15%{transform:translate(-50%,-10px) scale(1.12);opacity:1}30%{transform:translate(-50%,-14px) scale(1)}80%{opacity:1}100%{transform:translate(-50%,-60px) scale(.95);opacity:0}}
+
+/* pull-to-refresh: a red lock and Christmas dots */
+.xmas .ptr-lock{background:var(--red)}
+.xmas .d1{background:var(--red)}.xmas .d2{background:var(--green)}.xmas .d3{background:var(--gold)}
+@media (min-width:900px){
+  .hohoho{grid-template-columns:auto auto;justify-content:center;gap:22px;padding:14px 24px 20px}
+  .hohoho .santa{width:92px;height:92px}
+  .hohoho .ho-words{font-size:66px}
+  .hohoho .ho-sub{font-size:16px}
+  .holly{width:84px;height:68px}
+}
