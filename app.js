@@ -720,7 +720,41 @@ function cropToDataUrl(size = 320) {
   return c.toDataURL("image/jpeg", 0.85);
 }
 function openSheet(id) { lastFocus = document.activeElement; $(id).hidden = false; document.body.style.overflow = "hidden"; }
-function closeSheets() { $$(".sheet-wrap").forEach((s) => (s.hidden = true)); document.body.style.overflow = ""; if (lastFocus) lastFocus.focus?.(); }
+function closeSheets() { $$(".sheet-wrap").forEach((s) => (s.hidden = true)); document.body.style.overflow = ""; if (lastFocus) lastFocus.focus?.(); if (updateReady) reloadIfSafe(); }
+
+// Always on the latest version: phones resume LockItIn from the background instead of relaunching it,
+// so each time it comes back on screen, check sw.js's VERSION against the one this page loaded with.
+// If a new version is live, reload straight away, unless a sheet is open (a score or a chat message
+// being typed), in which case it reloads as soon as that sheet closes.
+let bootVersion = null, updateReady = false, lastCheck = 0;
+async function liveVersion() {
+  const t = await (await fetch("sw.js", { cache: "no-store" })).text();
+  return (t.match(/VERSION\s*=\s*"([^"]+)"/) || [])[1] || null;
+}
+function reloadIfSafe() {
+  if ($$(".sheet-wrap").some((w) => !w.hidden)) return;
+  location.reload();
+}
+async function checkForUpdate() {
+  if (updateReady) return reloadIfSafe();
+  if (Date.now() - lastCheck < 15000) return;
+  lastCheck = Date.now();
+  try {
+    const v = await liveVersion();
+    if (!v) return;
+    if (!bootVersion) { bootVersion = v; return; }
+    if (v === bootVersion) return;
+    updateReady = true;
+    navigator.serviceWorker?.getRegistration?.().then((r) => r && r.update()).catch(() => {});
+    reloadIfSafe();
+  } catch (e) { /* offline: try again next time */ }
+}
+function watchForUpdates() {
+  checkForUpdate();
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkForUpdate(); });
+  window.addEventListener("pageshow", (e) => { if (e.persisted) checkForUpdate(); });
+  window.addEventListener("focus", checkForUpdate);
+}
 
 function openPost(gid, text) {
   st.post = gid || st.post || games[0].id;
@@ -1377,6 +1411,7 @@ async function boot() {
     for (const ev of ["gesturestart", "gesturechange"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
   }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  watchForUpdates();
   const q = new URLSearchParams(location.search);
   const shared = [q.get("title"), q.get("text"), q.get("url")].filter(Boolean).join("\n");
   if (shared) { pendingShare = shared; history.replaceState(null, "", location.pathname); }
