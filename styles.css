@@ -556,3 +556,18 @@ td.spark svg{display:block}
 .ptr.fail .ptr-lock{animation:ptrshake .4s}
 @keyframes ptrshake{25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
 @media (prefers-reduced-motion:reduce){.ptr *{animation:none!important}}
+
+/* Comments: the 💬 pill on a Today card, the comment box when posting, and the comments sheet */
+.talk{font:inherit;color:#fff;font-weight:800;font-size:13px;background:rgba(255,255,255,.22);border:0;padding:4px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.talk:hover{background:rgba(255,255,255,.32)}
+.label .opt{color:var(--muted);font-weight:600}
+textarea.comment{min-height:64px}
+.cmt{display:flex;gap:10px;align-items:flex-start}
+.cmt-b{flex:1;min-width:0;background:var(--soft);border-radius:4px 16px 16px 16px;padding:9px 13px}
+.cmt.me .cmt-b{background:color-mix(in srgb,var(--gc) 14%,transparent)}
+.cmt.focus .cmt-b{box-shadow:0 0 0 2px var(--gc)}
+.cmt-h{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.cmt-h span{color:var(--muted);font-weight:700;white-space:nowrap}
+.cmt p{margin:3px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-weight:600}
+@media (prefers-reduced-motion:no-preference){.cmt.focus .cmt-b{animation:cpop .45s cubic-bezier(.2,1.4,.4,1) both}}
+@keyframes cpop{from{transform:scale(.92)}to{transform:none}}

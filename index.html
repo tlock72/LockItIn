@@ -209,6 +209,10 @@
         <div class="field"><label class="label" for="score">Score</label><input id="score" class="score" inputmode="decimal" autocomplete="off" placeholder="0"></div>
         <div class="field"><label class="label" for="date">Puzzle date</label><input id="date" type="date"></div>
       </div>
+      <div class="field">
+        <div class="row between"><label class="label" for="comment">Add a comment <span class="opt">(optional)</span></label><span class="note" id="commentLeft"></span></div>
+        <textarea id="comment" class="comment" maxlength="280" rows="2" placeholder="Brag, moan or blame the map…"></textarea>
+      </div>
       <button class="btn big" id="save" type="button">Lock it in 🔒</button>
       <p class="msg" id="msg" role="status"></p>
     </div>
@@ -223,6 +227,17 @@
       <button class="x" type="button" data-close aria-label="Close">×</button>
     </div>
     <div class="sheet-body stack" id="yBody"></div>
+  </div>
+</div>
+
+<!-- Today's comments for one game -->
+<div class="sheet-wrap" id="cSheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cTitle">
+    <div class="sheet-head">
+      <div><h2 id="cTitle">Comments</h2><p id="cDate"></p></div>
+      <button class="x" type="button" data-close aria-label="Close">×</button>
+    </div>
+    <div class="sheet-body stack" id="cBody"></div>
   </div>
 </div>
 

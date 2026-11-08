@@ -1,6 +1,6 @@
 // LockItIn service worker: keeps the app shell available offline and loads fast.
 // Bump VERSION whenever you change app files so phones pick up the update.
-const VERSION = "lockitin-v19";
+const VERSION = "lockitin-v20";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "config.js",
   "manifest.webmanifest", "icons/icon.svg", "icons/glyph.svg", "icons/icon-192.png", "icons/apple-touch-icon.png"
@@ -47,11 +47,14 @@ self.addEventListener("push", (e) => {
   })());
 });
 
+// Tapping a notification opens LockItIn. A comment notification also opens that comment.
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const url = new URL((e.notification.data && e.notification.data.url) || "./", self.registration.scope).href;
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
     const w = wins.find((c) => "focus" in c);
-    return w ? w.focus() : self.clients.openWindow(url);
+    if (!w) return self.clients.openWindow(url);
+    w.postMessage({ type: "open", url });
+    return w.focus();
   }));
 });

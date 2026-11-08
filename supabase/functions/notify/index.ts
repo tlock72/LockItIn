@@ -73,7 +73,7 @@ function rank(rows: Row[], low: boolean) {
 
 async function onScore(me: string, gameId: string, date: string) {
   const [row, game, people, day, subs] = await Promise.all([
-    db.from("scores").select("score").eq("player_id", me).eq("game_id", gameId).eq("play_date", date).maybeSingle(),
+    db.from("scores").select("score, comment").eq("player_id", me).eq("game_id", gameId).eq("play_date", date).maybeSingle(),
     db.from("games").select("id, name, better, max_score").eq("id", gameId).maybeSingle(),
     db.from("players").select("id, name"),
     db.from("scores").select("player_id, score").eq("game_id", gameId).eq("play_date", date),
@@ -83,18 +83,26 @@ async function onScore(me: string, gameId: string, date: string) {
   const g = game.data, fam = people.data || [], all = (subs.data || []) as Sub[];
   const nameOf = (id: string) => fam.find((p) => p.id === id)?.name || "Someone";
   const list = rank((day.data || []) as Row[], g.better === "low");
-  const mine = list.find((e) => e.uid === me);
   let sent = 0;
 
-  // 1. "Dad locked in Krillion: 520" to everyone else.
-  if (await once(`score|${me}|${g.id}|${date}|${row.data.score}`)) {
-    const place = mine && list.length > 1 ? ` · ${mine.rank === 1 ? "👑 top" : "#" + mine.rank} of ${list.length} so far` : "";
-    sent += await send(all.filter((s) => s.player_id !== me), {
-      title: `🔒 ${nameOf(me)} locked in ${g.name}`,
-      body: `${fmt(row.data.score)}${g.max_score ? ` / ${fmt(g.max_score)}` : ""}${place}`,
-      tag: `score-${g.id}-${date}-${me}`,
-      url: "./",
-    });
+  // 1. "Tobey locked in Krillion" / "520" to everyone else. With a comment: "Tobey locked in Krillion and left a comment",
+  //    and tapping it opens the comment in the app.
+  const comment = String(row.data.comment || "").trim();
+  const ck = comment ? `|${comment.length}:${[...comment].reduce((h, c) => (h * 31 + c.codePointAt(0)!) >>> 0, 7)}` : "";
+  if (await once(`score|${me}|${g.id}|${date}|${row.data.score}${ck}`)) {
+    sent += await send(all.filter((s) => s.player_id !== me), comment
+      ? {
+        title: `💬 ${nameOf(me)} locked in ${g.name} and left a comment`,
+        body: `${fmt(row.data.score)} · “${comment.length > 120 ? comment.slice(0, 119) + "…" : comment}”`,
+        tag: `score-${g.id}-${date}-${me}`,
+        url: `./?comment=${encodeURIComponent(`${g.id}|${date}|${me}`)}`,
+      }
+      : {
+        title: `🔒 ${nameOf(me)} locked in ${g.name}`,
+        body: fmt(row.data.score),
+        tag: `score-${g.id}-${date}-${me}`,
+        url: "./",
+      });
   }
 
   // 2. Once everyone has played: "Tobey won the day!" to everyone, with the day's podium.

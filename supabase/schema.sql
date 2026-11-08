@@ -42,10 +42,15 @@ create table if not exists scores (
   play_date date not null,
   score numeric not null check (score >= 0),
   details jsonb,              -- extra per-game info, e.g. Krillion answer tiers
+  comment text,               -- optional comment posted with the score
   created_at timestamptz not null default now(),
   primary key (player_id, game_id, play_date)
 );
 alter table scores add column if not exists details jsonb;
+-- An optional comment posted with the score (shown on Today and in the score notification).
+alter table scores add column if not exists comment text;
+alter table scores drop constraint if exists scores_comment_len;
+alter table scores add constraint scores_comment_len check (comment is null or char_length(comment) <= 280);
 
 -- ---------- move older setups forward (invite codes and PINs are gone) ----------
 do $$ begin

@@ -18,6 +18,7 @@ let games = [], allGames = [];
 let players = {};             // id -> player
 let scores = new Map();       // "player|game|date" -> row
 let pendingShare = null;
+let pendingComment = null;    // "game|date|player" from a tapped comment notification
 let adminDirty = false;
 
 // The app always opens on Today, and the leaderboards always open on All time.
@@ -394,6 +395,8 @@ function renderToday() {
     const flip = won
       ? `<button class="flip" type="button" data-flip="${esc(g.id)}" aria-label="${showWin ? "Show today's result" : "Show the day's winner"}">${showWin ? "Today's result" : "🏆 Winner"}<span class="fi" aria-hidden="true">↻</span></button>`
       : "";
+    const nc = rowsFor(g.id, today).filter((r) => r.play_date === today && r.comment).length;
+    const talk = nc ? `<button class="talk" type="button" data-comments="${esc(g.id)}" aria-label="${nc} ${nc === 1 ? "comment" : "comments"} today">💬 ${nc}</button>` : "";
     const cls = `gcard${won ? " decided" : ""}${showWin ? " showwin" : ""}${st.flipAnim === g.id ? " flipping" : ""}`;
     if (showWin) {
       const top = list[0], many = winners.length > 1;
@@ -407,7 +410,7 @@ function renderToday() {
           <span class="dpstep" style="--h:${h.toFixed(2)}">${e.rank}</span></div>`;
       }).join("");
       return `<article class="${cls}" style="--gc:${gc(g.id)}">
-        <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3>${flip}</div>
+        <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3><span class="gtop-r">${talk}${flip}</span></div>
         <div class="gwin">
           <div class="champ">${champ}<div class="ctext"><div class="cflag">${many ? "🤝 It's a draw" : "🏆 Won the day"}</div><div class="cname">${esc(listNames(winners))}</div><div class="cscore">${fmt(top.s)}${g.max_score ? `<span class="of"> / ${fmt(g.max_score)}</span>` : ""}</div></div></div>
           <div class="dpod" aria-label="Today's ${esc(g.name)} podium">${steps}</div>
@@ -415,7 +418,7 @@ function renderToday() {
       </article>`;
     }
     return `<article class="${cls}" style="--gc:${gc(g.id)}">
-      <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3><span class="gtop-r">${link}${flip}</span></div>
+      <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3><span class="gtop-r">${talk}${link}${flip}</span></div>
       <div class="gbody">
         ${mine
           ? `<div class="mine"><span class="big">${fmt(mine.s)}</span>${g.max_score ? `<span class="of">/ ${fmt(g.max_score)}</span>` : ""}<span class="pill on">${outcome(list, me.id) === "draw" ? "🤝 =" : outcome(list, me.id) === "win" ? "👑 #" : "#"}${mine.rank} of ${list.length}</span></div>`
@@ -697,20 +700,61 @@ function closeSheets() { $$(".sheet-wrap").forEach((s) => (s.hidden = true)); do
 function openPost(gid, text) {
   st.post = gid || st.post || games[0].id;
   st.krill = st.rounds = null;
-  $("#paste").value = text || ""; $("#score").value = ""; $("#msg").textContent = ""; $("#msg").className = "msg";
+  $("#paste").value = text || ""; $("#score").value = "";
+  st.commentFor = null; $("#msg").textContent = ""; $("#msg").className = "msg";
   $("#date").value = todayStr(); $("#date").max = todayStr();
   renderPostGame();
+  fillComment();
   openSheet("#postSheet");
   if (text) onPasteText(text); else {
     const existing = scores.get(`${me.id}|${st.post}|${todayStr()}`);
     if (existing) $("#score").value = existing.score;
   }
 }
+// The comment box shows what you already said about this game and day, so you can change or clear it.
+function fillComment() {
+  const k = `${me.id}|${st.post}|${$("#date").value || todayStr()}`;
+  if (st.commentFor === k) return;
+  st.commentFor = k;
+  $("#comment").value = scores.get(k)?.comment || "";
+  commentLeft();
+}
+function commentLeft() {
+  const n = 280 - $("#comment").value.length;
+  $("#commentLeft").textContent = n < 60 ? `${n} left` : "";
+}
 function renderPostGame() {
   const g = gById(st.post);
   $("#postSheet .sheet").style.setProperty("--gc", gc(g.id));
   $("#postTitle").textContent = `Lock in your ${g.name} score`;
   $("#postChips").innerHTML = games.map((x) => `<button class="chip" type="button" style="--gc:${gc(x.id)}" data-g="${esc(x.id)}" aria-pressed="${x.id === g.id}">${esc(x.name)}</button>`).join("");
+}
+// Everyone's comments on one game for one day, best score first. focus = the comment a notification pointed at.
+function openComments(gid, date, focus) {
+  const g = gById(gid); if (!g) return;
+  const list = rankDay(rowsFor(gid, date).filter((r) => r.play_date === date).map((r) => ({ uid: r.player_id, s: Number(r.score), c: r.comment })), g);
+  const said = list.filter((e) => e.c);
+  $("#cSheet .sheet").style.setProperty("--gc", gc(g.id));
+  $("#cTitle").textContent = `${g.name} comments`;
+  $("#cDate").textContent = date === todayStr() ? `Today · ${nice(date, { month: "long", day: "numeric" })}` : nice(date);
+  const mineDone = list.some((e) => e.uid === me.id && e.c);
+  $("#cBody").innerHTML = (said.length
+    ? said.map((e) => `<div class="cmt${e.uid === focus ? " focus" : ""}${e.uid === me.id ? " me" : ""}" data-uid="${esc(e.uid)}">
+        ${av(e.uid, "m")}<div class="cmt-b"><div class="cmt-h"><b>${esc(nameOf(e.uid))}</b><span>${MEDAL[e.rank] || "#" + e.rank} ${fmt(e.s)}</span></div><p>${esc(e.c)}</p></div></div>`).join("")
+    : `<div class="yempty">No comments on ${esc(g.name)} yet. 🦗</div>`)
+    + (date === todayStr() && list.some((e) => e.uid === me.id)
+      ? `<button class="btn ghost" type="button" data-addcomment="${esc(g.id)}">${mineDone ? "Edit my comment" : "Add a comment 💬"}</button>` : "");
+  openSheet("#cSheet");
+  const f = focus && $(`#cBody .cmt.focus`); if (f) setTimeout(() => f.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
+}
+// "krillion|2026-11-08|<player id>" from a comment notification.
+function openCommentLink(v) {
+  const [gid, date, uid] = String(v || "").split("|");
+  if (!gid || !/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return;
+  if (!me || !games.length) { pendingComment = v; return; }
+  closeSheets();
+  st.tab = "today"; render();
+  openComments(gid, date, uid);
 }
 function openYesterday() {
   const y = daysAgo(1), res = yesterdayResults();
@@ -749,18 +793,28 @@ async function callNotify(body) {
 function tellFamily(row) { callNotify({ type: "score", game_id: row.game_id, play_date: row.play_date }).catch(() => {}); }
 
 // Phone/computer notification while LockItIn is open in the background but push isn't set up.
-async function localNotify(title, body, tag) {
+async function localNotify(title, body, tag, url) {
   if (push.on || document.visibilityState === "visible" || !push.ok || Notification.permission !== "granted") return;
-  try { (await swReady()).showNotification(title, { body, tag, icon: "icons/icon-192.png" }); } catch (e) {}
+  try { (await swReady()).showNotification(title, { body, tag, icon: "icons/icon-192.png", data: { url: url || "./" } }); } catch (e) {}
 }
-function announceScore(r, updated) {
+const clip = (c, n) => (c.length > n ? c.slice(0, n - 1) + "…" : c);
+function announceScore(r, updated, onlyComment) {
   const g = gById(r.game_id); if (!g) return;
+  const c = String(r.comment || "").trim(), tag = `score-${g.id}-${r.play_date}-${r.player_id}`;
+  const link = `./?comment=${encodeURIComponent(`${g.id}|${r.play_date}|${r.player_id}`)}`;
+  if (onlyComment) {
+    toast(`💬 ${nameOf(r.player_id)} on ${g.name}: “${clip(c, 60)}”`, true);
+    localNotify(`💬 ${nameOf(r.player_id)} left a comment on ${g.name}`, `${fmt(r.score)} · “${clip(c, 120)}”`, tag, link);
+    return;
+  }
   const when = r.play_date === todayStr() ? "" : ` (${nice(r.play_date, { month: "short", day: "numeric" })})`;
   const { list } = dayResult(g, r.play_date), e = list.find((x) => x.uid === r.player_id);
   const place = e && list.length > 1 ? ` · ${e.rank === 1 ? "👑 top" : "#" + e.rank} of ${list.length}` : "";
   const text = `${nameOf(r.player_id)} ${updated ? "updated" : "locked in"} ${g.name}${when}: ${fmt(r.score)}${place}`;
-  toast(`🔒 ${text}`, true);
-  localNotify(`${nameOf(r.player_id)} ${updated ? "updated" : "locked in"} ${g.name}`, `${fmt(r.score)}${place}`, `score-${g.id}-${r.play_date}-${r.player_id}`);
+  toast(`🔒 ${text}${c ? ` 💬 “${clip(c, 40)}”` : ""}`, true);
+  const verb = `${nameOf(r.player_id)} ${updated ? "updated" : "locked in"} ${g.name}`;
+  if (c) localNotify(`💬 ${verb} and left a comment`, `${fmt(r.score)} · “${clip(c, 120)}”`, tag, link);
+  else localNotify(`🔒 ${verb}`, fmt(r.score), tag);
 }
 // Called whenever scores change. The first call only remembers the current winners, so opening the app is quiet.
 function checkWins() {
@@ -856,7 +910,7 @@ async function loadAll() {
   const [g] = await Promise.all([
     sb.from("games").select("*").order("sort").then((r) => { if (r.error) throw r.error; return r.data; }),
     loadPlayers(),
-    fetchAll("scores", "player_id,game_id,play_date,score,details").then((s) => { scores = new Map(s.map((r) => [key(r), tidyKrill(r)])); }),
+    fetchAll("scores", "player_id,game_id,play_date,score,details,comment").then((s) => { scores = new Map(s.map((r) => [key(r), tidyKrill(r)])); }),
   ]);
   allGames = g; games = g.filter((x) => x.active);
   render(); checkWins(); render();
@@ -870,7 +924,11 @@ function subscribe() {
       else {
         const prev = scores.get(key(p.new));
         scores.set(key(p.new), tidyKrill(p.new));
-        if (me && p.new.player_id !== me.id && (!prev || Number(prev.score) !== Number(p.new.score))) announceScore(p.new, !!prev);
+        if (me && p.new.player_id !== me.id) {
+          const newC = String(p.new.comment || "").trim(), oldC = String(prev?.comment || "").trim();
+          if (!prev || Number(prev.score) !== Number(p.new.score)) announceScore(p.new, !!prev);
+          else if (newC && newC !== oldC) announceScore(p.new, true, true);
+        }
       }
       checkWins(); render();
     })
@@ -903,6 +961,7 @@ async function enterMain(welcome) {
   syncPush();
   if (welcome) { toast(welcome); confetti([safeColor(me.color), "#F2B21B"]); }
   if (pendingShare) { const g = guessGame(pendingShare); openPost(g ? g.id : null, pendingShare); pendingShare = null; }
+  if (pendingComment) { const v = pendingComment; pendingComment = null; openCommentLink(v); }
 }
 
 /* ---------- actions ---------- */
@@ -926,7 +985,7 @@ function prefill() {
 function onPasteText(text) {
   $("#paste").value = text;
   const hit = guessGame(text);
-  if (hit && hit.id !== st.post) { st.post = hit.id; renderPostGame(); }
+  if (hit && hit.id !== st.post) { st.post = hit.id; renderPostGame(); fillComment(); }
   prefill();
 }
 async function saveScore() {
@@ -938,7 +997,8 @@ async function saveScore() {
   if (date > todayStr()) return fail("That date hasn't happened yet!");
   const mineBefore = rowsFor(g.id).filter((r) => r.player_id === me.id && r.play_date !== date).map((r) => Number(r.score));
   const pb = mineBefore.length && mineBefore.every((s) => better(g, v, s));
-  const row = { player_id: me.id, game_id: g.id, play_date: date, score: v, details: null };
+  const comment = $("#comment").value.trim().slice(0, 280) || null;
+  const row = { player_id: me.id, game_id: g.id, play_date: date, score: v, details: null, comment };
   if ((g.id === "maptap" || g.id === "timeguessr") && st.rounds && st.rounds.score === v) row.details = { rounds: st.rounds.rounds };
   if (g.id === "krillion" && st.krill && st.krill.score === v) {
     const { tiers, line, puzzle, map, ok } = st.krill;
@@ -954,6 +1014,7 @@ async function saveScore() {
   const mine = dayList.find((e) => e.uid === me.id);
   const leading = mine && mine.rank === 1 && dayList.length > 1;
   closeSheets();
+  if (comment && !pb && !leading) toast(`${g.name} locked in: ${fmt(v)} 🔒 · 💬 comment posted`); else
   toast(pb ? `New personal best in ${g.name}! 🎉` : leading ? `You're top of the family in ${g.name}! 👑` : `${g.name} locked in: ${fmt(v)} 🔒`);
   confetti(pb || leading ? ["#F2B21B", "#FFD95A", safeColor(me.color)] : [safeColor(me.color), "#FFFFFF", "#5B3DF5"]);
   if (navigator.vibrate) navigator.vibrate(pb || leading ? [20, 40, 20] : 15);
@@ -998,7 +1059,11 @@ function wire() {
     const post = t.closest("[data-post]");
     if (post) { openPost(post.dataset.post); return; }
     const chip = t.closest(".chip");
-    if (chip) { st.post = chip.dataset.g; renderPostGame(); prefill(); return; }
+    if (chip) { st.post = chip.dataset.g; renderPostGame(); fillComment(); prefill(); return; }
+    const talk = t.closest("[data-comments]");
+    if (talk) { openComments(talk.dataset.comments, todayStr()); return; }
+    const addc = t.closest("[data-addcomment]");
+    if (addc) { closeSheets(); openPost(addc.dataset.addcomment); setTimeout(() => $("#comment").focus(), 250); return; }
     if (t.closest("[data-close]") || t.classList.contains("sheet-wrap")) { closeSheets(); return; }
     const gp = t.closest("[data-game]");
     if (gp) { st.game = gp.dataset.game; st.sort = null; save("lii.board", st.game); renderBoards(); return; }
@@ -1039,6 +1104,8 @@ function wire() {
     catch (e) { m.className = "msg err"; m.textContent = "Couldn't reach the notification service."; }
   };
   $("#paste").addEventListener("input", () => onPasteText($("#paste").value));
+  $("#comment").addEventListener("input", commentLeft);
+  $("#date").addEventListener("change", fillComment);
   $("#pasteBtn").onclick = async () => {
     try { const txt = await navigator.clipboard.readText(); if (txt) onPasteText(txt); }
     catch (e) { $("#paste").focus(); $("#msg").className = "msg"; $("#msg").textContent = "Long-press the box and choose Paste."; }
@@ -1193,6 +1260,12 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   const shared = [q.get("title"), q.get("text"), q.get("url")].filter(Boolean).join("\n");
   if (shared) { pendingShare = shared; history.replaceState(null, "", location.pathname); }
+  if (q.get("comment")) { pendingComment = q.get("comment"); history.replaceState(null, "", location.pathname); }
+  // Tapping a comment notification while LockItIn is already open.
+  if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", (e) => {
+    if (!e.data || e.data.type !== "open") return;
+    try { const c = new URL(e.data.url).searchParams.get("comment"); if (c) openCommentLink(c); } catch (err) {}
+  });
   wire();
   if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || !window.supabase) { show("screen-setup"); return; }
   sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true } });
