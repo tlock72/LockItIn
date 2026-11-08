@@ -287,10 +287,16 @@ function anyStreak(uid) {
   while (dates.has(daysAgo(i))) { n++; i++; }
   return n;
 }
+// A day's win is only decided once the day is over, or once everyone in the family has played that game.
+// It still needs at least two players.
+function decided(date, n) {
+  const fam = Object.keys(players).length;
+  return n > 1 && (date < todayStr() || n >= fam);
+}
 function gameTable(gid, days, everyone) {
   const g = gById(gid), from = days ? daysAgo(days - 1) : null, t = {};
   for (const [date, list] of Object.entries(byDate(gid, from))) {
-    const multi = list.length > 1, ranked = rankDay(list, g), drew = ranked.filter((e) => e.rank === 1).length > 1;
+    const multi = decided(date, list.length), ranked = rankDay(list, g), drew = ranked.filter((e) => e.rank === 1).length > 1;
     for (const e of ranked) {
       const r = (t[e.uid] = t[e.uid] || { uid: e.uid, played: 0, total: 0, best: null, bestDate: null, wins: 0, draws: 0 });
       r.played++; r.total += e.s;
@@ -323,11 +329,10 @@ function outcome(ranked, uid) {
 const winsText = (w, d) => `${w} ${w === 1 ? "win" : "wins"}${d ? ` · ${d} ${d === 1 ? "draw" : "draws"}` : ""}`;
 const drawsTag = (d) => (d ? ` <small class="drew">+${d} 🤝</small>` : "");
 
-// Today's ranking for one game, and whether the day is settled (everyone in the family has played).
+// A day's ranking for one game, and whether the day is settled (everyone has played, or the day is over).
 function dayResult(g, date = todayStr()) {
   const list = rankDay(rowsFor(g.id, date).filter((r) => r.play_date === date).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g);
-  const fam = Object.keys(players).length;
-  const done = fam > 1 && list.length >= fam;
+  const done = decided(date, list.length);
   return { list, done, winners: done ? list.filter((e) => e.rank === 1).map((e) => e.uid) : [] };
 }
 
@@ -338,7 +343,7 @@ function racePoints(from) {
   for (const uid of Object.keys(players)) pts[uid] = { total: 0, by: {}, draws: 0 };
   for (const g of games) {
     for (const [date, list] of Object.entries(byDate(g.id, from))) {
-      if (list.length < 2) continue;
+      if (!decided(date, list.length)) continue;
       const win = rankDay(list, g).filter((e) => e.rank === 1);
       for (const e of win) {
         const p = (pts[e.uid] = pts[e.uid] || { total: 0, by: {}, draws: 0 });
@@ -515,7 +520,7 @@ function renderBoards() {
         <td>${fmt(r.avg)}</td><td>${fmt(r.best)}</td>${low ? "" : `<td>${r.played ? fmt(r.total) : "–"}</td>`}<td>${r.wins}</td><td>${r.draws || "–"}</td><td>${r.played}</td><td>${r.streak || "–"}</td>
         <td class="spark">${sparkline(r.form, g)}</td></tr>`).join("")}</tbody></table>`
     : `<div class="empty"><b>No ${esc(g.name)} scores ${days ? `in the last ${days} days` : "yet"}</b>Play today's ${esc(g.name)} and lock in your score to get on the board.</div>`;
-  $("#boardNote").textContent = `A daily win needs at least two players; sharing the top score is a draw (🤝). Form shows each person's last 10 ${g.name} scores. Tap a column to re-rank the table and podium.`;
+  $("#boardNote").textContent = `A day is won once everyone has played it or the day is over, and needs at least two players; sharing the top score is a draw (🤝). Form shows each person's last 10 ${g.name} scores. Tap a column to re-rank the table and podium.`;
 
   // Krillion: answer tiers (from pasted results)
   const kw = $("#krill"), kh = $("#krillH");
@@ -566,7 +571,7 @@ function renderBoards() {
       `<tr class="${u === me.id ? "me" : ""}"><td></td><td class="pl">${person(u)}</td>${dayList.map((d) => {
         const e = ranked[d].find((x) => x.uid === u);
         if (!e) return `<td class="cell">·</td>`;
-        return `<td class="cell ${outcome(ranked[d], u) || ""}">${fmt(e.s)}</td>`;
+        return `<td class="cell ${(decided(d, ranked[d].length) && outcome(ranked[d], u)) || ""}">${fmt(e.s)}</td>`;
       }).join("")}</tr>`).join("")}</tbody></table>`;
   }
 }
@@ -586,7 +591,7 @@ function renderAllGames() {
   $("#rankNote").textContent = `Ranked by days won, one for each game won each day; draws 🤝 break ties · ${days ? `last ${days} days` : "all time"}`;
   $("#podium").innerHTML = any ? podiumHTML(rows, (r) => `${r.wins} ${r.wins === 1 ? "day" : "days"}${drawsTag(r.draws)}`) : "";
 
-  const avail = games.reduce((n, g) => n + Object.values(byDate(g.id, from)).filter((l) => l.length > 1).length, 0);
+  const avail = games.reduce((n, g) => n + Object.entries(byDate(g.id, from)).filter(([d, l]) => decided(d, l.length)).length, 0);
   const won = rows.reduce((n, r) => n + r.wins, 0), drawn = avail - won;
 
   const totals = Object.fromEntries(games.map((g) => [g.id, order.reduce((n, u) => n + (pts[u].by[g.id] || 0), 0)]));
