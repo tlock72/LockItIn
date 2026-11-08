@@ -75,19 +75,56 @@ function pop(el, text) {
   setTimeout(() => p.remove(), 1500);
 }
 
-/* jingle bells, played with WebAudio (no sound files) */
-let ac = null;
+/* jingle bells, played with WebAudio (no sound files)
+   Phones: iPhone mutes WebAudio when the ring/silent switch is on, so while the bells play we ask
+   for the "playback" audio session (iOS 17+), or play a silent <audio> clip on older iPhones,
+   which does the same. The audio is unlocked on the first tap anywhere so the bells start at once. */
+let ac = null, quiet = null, sessT = 0;
+const SILENT = "data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
+function audio() {
+  if (!ac) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    ac = new AC();
+  }
+  if (ac.state !== "running") ac.resume().catch(() => {});
+  return ac;
+}
+function loudSession() {
+  try {
+    const s = navigator.audioSession;
+    if (s && "type" in s) {
+      s.type = "playback";
+      clearTimeout(sessT); sessT = setTimeout(() => { try { s.type = "auto"; } catch (e) {} }, 4000);
+    } else if (/iP(hone|ad|od)|Macintosh/.test(navigator.userAgent) && "ontouchend" in document) {
+      quiet = quiet || Object.assign(new Audio(SILENT), { loop: false, playsInline: true });
+      quiet.play().catch(() => {});
+    }
+  } catch (e) {}
+}
+function unlock() {
+  const a = audio();
+  if (!a) return;
+  try { const s = a.createBufferSource(); s.buffer = a.createBuffer(1, 1, 22050); s.connect(a.destination); s.start(0); } catch (e) {}
+  if (a.state === "running") for (const ev of ["touchend", "click", "keydown"]) document.removeEventListener(ev, unlock, true);
+}
+for (const ev of ["touchend", "click", "keydown"]) document.addEventListener(ev, unlock, true);
 function jingle() {
   try {
-    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
-    if (ac.state === "suspended") ac.resume();
-    const E = 659.3, G = 784, C = 523.3, D = 587.3;
-    const tune = [[E, 1], [E, 1], [E, 2], [E, 1], [E, 1], [E, 2], [E, 1], [G, 1], [C, 1.5], [D, .5], [E, 3]];
-    let t = ac.currentTime + 0.05;
-    const beat = 0.15;
-    for (const [f, len] of tune) { bell(f, t); t += beat * len; }
-    // sleigh-bell shakes underneath
-    for (let i = 0; i < 10; i++) shake(ac.currentTime + 0.05 + i * beat * 2);
+    loudSession();
+    const a = audio();
+    if (!a) return;
+    const play = () => {
+      const E = 659.3, G = 784, C = 523.3, D = 587.3;
+      const tune = [[E, 1], [E, 1], [E, 2], [E, 1], [E, 1], [E, 2], [E, 1], [G, 1], [C, 1.5], [D, .5], [E, 3]];
+      const t0 = a.currentTime + 0.05, beat = 0.15;
+      let t = t0;
+      for (const [f, len] of tune) { bell(f, t); t += beat * len; }
+      // sleigh-bell shakes underneath
+      for (let i = 0; i < 10; i++) shake(t0 + i * beat * 2);
+    };
+    // A phone's audio can still be waking up; start the tune once it is, so no notes get squashed.
+    if (a.state === "running") play(); else a.resume().then(play, () => {});
   } catch (e) {}
 }
 function bell(f, t) {
