@@ -132,26 +132,33 @@ function jingle() {
     if (!a) return;
     const play = () => {
       if (a.currentTime < tuneEnd) return; // still playing: don't pile tunes on top of each other
-      // The opening hook of "Last Christmas" (Wham!) at the record's 107 bpm, in D major, on the
-      // record's kind of instruments: drum machine, synth bass, synth chords, a bright synth lead
-      // and sleigh bells, with a bit of reverb.
+      // The first line of the "Last Christmas" (Wham!) chorus at the record's 107 bpm, in D major,
+      // over its chords (D, Bm, Em, A): synth lead doubled by a glockenspiel, synth chords, synth
+      // bass, drum machine, sleigh bells on every 16th note, and a twinkly chime run at the end.
       const beat = 60 / 107, t0 = a.currentTime + 0.06, out = bus();
-      const A4 = 440, D5 = 587.3, E5 = 659.3, Fs5 = 740;
-      const tune = [[E5, 1], [E5, .5], [D5, 1], [0, .5], [A4, .5], [E5, .5], [E5, .5], [Fs5, .5], [D5, 2]];
+      const A4 = 440, B4 = 493.9, Cs5 = 554.4, D5 = 587.3, E5 = 659.3, Fs5 = 740;
+      const tune = [
+        [E5, 1.5], [E5, .5], [D5, 1.5], [A4, .5],                   // Last Christ-mas, I
+        [E5, .5], [E5, .5], [Fs5, .5], [D5, 1.5], [B4, .5], [B4, .5], // gave you my heart, but the
+        [E5, .5], [E5, .5], [Fs5, .5], [D5, 1.5], [B4, .5], [Cs5, .5], // ve-ry next day you gave
+        [D5, .5], [Cs5, .5], [B4, 3],                               // it a-way
+      ];
       let t = t0;
-      for (const [f, len] of tune) { if (f) lead(out, f, t, beat * len); t += beat * len; }
-      const bars = [[73.4, [293.7, 370, 440]], [61.7, [246.9, 293.7, 370]]]; // D, then B minor
+      for (const [f, len] of tune) { lead(out, f, t, beat * len); glock(out, f * 2, t); t += beat * len; }
+      const bars = [[73.4, [293.7, 370, 440]], [61.7, [246.9, 293.7, 370]], [82.4, [246.9, 329.6, 392]], [55, [220, 277.2, 329.6]]];
       bars.forEach(([root, chord], b) => {
-        const bt = t0 + b * 4 * beat;
-        synthChord(out, chord, bt, 4 * beat);
-        for (let i = 0; i < 8; i++) synthBass(out, i % 2 ? root * 2 : root, bt + i * beat / 2, beat / 2);
-        for (let i = 0; i < 4; i++) {
+        const bt = t0 + b * 4 * beat, last = b === bars.length - 1;
+        synthChord(out, chord, bt, (last ? 5 : 4) * beat);
+        for (let i = 0; i < (last ? 1 : 8); i++) synthBass(out, i % 2 ? root * 2 : root, bt + i * beat / 2, last ? beat * 3 : beat / 2);
+        for (let i = 0; i < (last ? 1 : 4); i++) {
           drum(out, i % 2 ? "snare" : "kick", bt + i * beat);
           for (let h = 0; h < 2; h++) drum(out, "hat", bt + i * beat + h * beat / 2);
         }
       });
-      for (let i = 0; i < 16; i++) shake(out, t0 + i * beat / 2, i % 2 ? 0.5 : 1);
-      tuneEnd = t0 + 8 * beat;
+      for (let i = 0; i < 52; i++) shake(out, t0 + i * beat / 4, i % 4 === 0 ? 1 : i % 2 ? 0.35 : 0.6);
+      // twinkle: a quick rising chime run over the last chord
+      [A4, Cs5, E5, A4 * 2, Cs5 * 2, E5 * 2].forEach((f, i) => glock(out, f * 2, t0 + 13 * beat + i * 0.07, 0.7));
+      tuneEnd = t0 + 16 * beat;
       idleSoon(tuneEnd - a.currentTime + 2);
     };
     // A phone's audio can still be waking up; start the tune once it is, so no notes get squashed.
@@ -195,6 +202,15 @@ function lead(out, f, t, len) {
   }
   env(g, t, 0.13, 0.015, len * 0.9, 0.35);
   lp.connect(g); send(out, g, 0.5);
+}
+// Glockenspiel: a bright metal-bar ping that rings on.
+function glock(out, f, t, vol = 1) {
+  for (const [mult, v, dec] of [[1, .07, 1.4], [2.76, .02, .5], [5.4, .01, .25]]) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = "sine"; o.frequency.value = f * mult;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+    o.connect(g); send(out, g, 0.5); o.start(t); o.stop(t + dec + 0.05);
+  }
 }
 // Warm synth chords: detuned saws through a soft filter, held for the bar.
 function synthChord(out, freqs, t, len) {
