@@ -161,6 +161,7 @@ function jingle() {
       for (let i = 0; i < 52; i++) shake(out, t0 + i * beat / 4, i % 4 === 0 ? 1 : i % 2 ? 0.35 : 0.6);
       tuneEnd = t0 + 16 * beat;
       idleSoon(tuneEnd - a.currentTime + 2);
+      showStop(tuneEnd - a.currentTime);
     };
     // A phone's audio can still be waking up; start the tune once it is, so no notes get squashed.
     if (a.state === "running") play(); else { starting = true; a.resume().then(play, () => (starting = false)); }
@@ -182,6 +183,25 @@ function stopTune() {
   setTimeout(() => { try { dry.disconnect(); rev.disconnect(); } catch (e) {} }, 300);
   tune = null; tuneEnd = 0;
   idleSoon(2);
+  hideStop();
+}
+// A "tap to stop" button floats over the page while the tune plays.
+let stopBtn = null, stopT = 0;
+function showStop(secs) {
+  if (!stopBtn) {
+    stopBtn = document.createElement("button");
+    stopBtn.type = "button"; stopBtn.className = "music-stop"; stopBtn.hidden = true;
+    stopBtn.innerHTML = '<span class="ms-icon" aria-hidden="true">🔇</span> Tap to stop the music';
+    stopBtn.addEventListener("click", (e) => { e.stopPropagation(); stopTune(); });
+    document.body.appendChild(stopBtn);
+  }
+  stopBtn.hidden = false;
+  clearTimeout(stopT);
+  stopT = setTimeout(hideStop, Math.max(0, secs) * 1000 + 200);
+}
+function hideStop() {
+  clearTimeout(stopT);
+  if (stopBtn) stopBtn.hidden = true;
 }
 // Shared output: a gentle compressor plus a reverb send (the reverb is made from decaying noise).
 function bus() {

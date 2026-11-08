@@ -172,3 +172,14 @@ body.xmas{background:var(--bg)}
   .hohoho .ho-words{font-size:26px}
   .xmas .yesterday .ytext span{display:none}
 }
+
+/* "tap to stop the music" button, shown while the jingle plays */
+.music-stop{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabbar,64px) + env(safe-area-inset-bottom,0px) + 76px);z-index:67;
+  display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;font:inherit;font-weight:800;font-size:15px;
+  color:#fff;background:var(--red);padding:12px 20px;border-radius:999px;max-width:calc(100vw - 32px);white-space:nowrap;
+  box-shadow:0 10px 30px -10px rgba(0,0,0,.5),inset 0 0 0 2px rgba(255,214,120,.45)}
+.music-stop[hidden]{display:none}
+.music-stop:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+@media (prefers-reduced-motion:no-preference){.music-stop:not([hidden]){animation:msIn .25s ease-out}}
+@keyframes msIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+@media (min-width:900px){.music-stop{bottom:28px}}
