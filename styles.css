@@ -519,3 +519,6 @@ td.spark svg{display:block}
 .alltable tr.famrow td{font-weight:800;color:var(--muted);border-top:2px solid var(--line)}
 .stack.wide{gap:18px}
 @media (max-width:520px){.rrow{grid-template-columns:minmax(64px,96px) minmax(0,1fr);gap:8px}.rwho .av.m{--s:34px}.rwho .nm{font-size:14px}.rval{font-size:17px}}
+.grid td.draw{color:var(--gc);font-weight:800}
+.grid td.draw::after{content:" 🤝";font-size:11px}
+.pod .val small.drew{font-size:.7em;color:var(--muted);font-weight:700;white-space:nowrap}

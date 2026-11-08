@@ -23,10 +23,10 @@ let adminDirty = false;
 // The app always opens on Today, and the leaderboards always open on All time.
 // pm = what the podium ranks by ("wins" = days won, "avg" = average score).
 // flipped = Today cards turned over to show today's result instead of the day's winner.
-const st = { tab: "today", game: null, period: "0", pm: "wins", sort: null, post: null, newColor: null, editColor: null, flipped: new Set(), flipAnim: null, winSeen: null };
+const st = { tab: "today", game: "all", period: "0", pm: "wins", sort: null, post: null, newColor: null, editColor: null, flipped: new Set(), flipAnim: null, winSeen: null };
 try {
-  st.game = localStorage.getItem("lii.game");
-  st.pm = localStorage.getItem("lii.pm") === "avg" ? "avg" : "wins";
+  st.game = localStorage.getItem("lii.board") || st.game;
+  st.pm = localStorage.getItem("lii.boardPm") === "avg" ? "avg" : "wins";
 } catch (e) {}
 
 /* ---------- helpers ---------- */
@@ -281,16 +281,16 @@ function anyStreak(uid) {
 function gameTable(gid, days, everyone) {
   const g = gById(gid), from = days ? daysAgo(days - 1) : null, t = {};
   for (const [date, list] of Object.entries(byDate(gid, from))) {
-    const multi = list.length > 1;
-    for (const e of rankDay(list, g)) {
-      const r = (t[e.uid] = t[e.uid] || { uid: e.uid, played: 0, total: 0, best: null, bestDate: null, wins: 0 });
+    const multi = list.length > 1, ranked = rankDay(list, g), drew = ranked.filter((e) => e.rank === 1).length > 1;
+    for (const e of ranked) {
+      const r = (t[e.uid] = t[e.uid] || { uid: e.uid, played: 0, total: 0, best: null, bestDate: null, wins: 0, draws: 0 });
       r.played++; r.total += e.s;
       if (r.best == null || better(g, e.s, r.best)) { r.best = e.s; r.bestDate = date; }
-      if (multi && e.rank === 1) r.wins++;
+      if (multi && e.rank === 1) drew ? r.draws++ : r.wins++;
     }
   }
   // everyone: include family members with no scores yet, so the board shows the whole family
-  if (everyone) for (const uid of Object.keys(players)) t[uid] = t[uid] || { uid, played: 0, total: 0, best: null, bestDate: null, wins: 0 };
+  if (everyone) for (const uid of Object.keys(players)) t[uid] = t[uid] || { uid, played: 0, total: 0, best: null, bestDate: null, wins: 0, draws: 0 };
   return Object.values(t).map((r) => ({
     ...r, avg: r.played ? r.total / r.played : null, streak: r.played ? gameStreak(r.uid, gid) : 0,
     form: rowsFor(gid).filter((x) => x.player_id === r.uid).sort((a, b) => (a.play_date < b.play_date ? -1 : 1)).slice(-10).map((x) => Number(x.score)),
@@ -305,6 +305,15 @@ function sparkline(vals, g) {
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-label="Last ${vals.length} scores"><polyline points="${pts.map((p) => p.map((n) => n.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="${gc(g.id)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3" fill="${gc(g.id)}"/></svg>`;
 }
 
+// One person's result on a ranked day: "win" (top score alone), "draw" (shared top score) or null. Needs 2+ players.
+function outcome(ranked, uid) {
+  const e = ranked.find((x) => x.uid === uid);
+  if (!e || ranked.length < 2 || e.rank !== 1) return null;
+  return ranked.filter((x) => x.rank === 1).length > 1 ? "draw" : "win";
+}
+const winsText = (w, d) => `${w} ${w === 1 ? "win" : "wins"}${d ? ` · ${d} ${d === 1 ? "draw" : "draws"}` : ""}`;
+const drawsTag = (d) => (d ? ` <small class="drew">+${d} 🤝</small>` : "");
+
 // Today's ranking for one game, and whether the day is settled (everyone in the family has played).
 function dayResult(g, date = todayStr()) {
   const list = rankDay(rowsFor(g.id, date).filter((r) => r.play_date === date).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g);
@@ -313,18 +322,20 @@ function dayResult(g, date = todayStr()) {
   return { list, done, winners: done ? list.filter((e) => e.rank === 1).map((e) => e.uid) : [] };
 }
 
-// All games: one point for winning each game each day (a tie shares the point; a win needs two players).
+// All games: one point for each game won outright each day (a win needs two players).
+// A shared top score is a draw: counted separately, and it breaks ties.
 function racePoints(from) {
   const pts = {}, days = {};
-  for (const uid of Object.keys(players)) pts[uid] = { total: 0, by: {} };
+  for (const uid of Object.keys(players)) pts[uid] = { total: 0, by: {}, draws: 0 };
   for (const g of games) {
     for (const [date, list] of Object.entries(byDate(g.id, from))) {
       if (list.length < 2) continue;
       const win = rankDay(list, g).filter((e) => e.rank === 1);
       for (const e of win) {
-        const p = (pts[e.uid] = pts[e.uid] || { total: 0, by: {} }), share = 1 / win.length;
-        p.total += share; p.by[g.id] = (p.by[g.id] || 0) + share;
-        ((days[date] = days[date] || [])).push({ uid: e.uid, gid: g.id, share });
+        const p = (pts[e.uid] = pts[e.uid] || { total: 0, by: {}, draws: 0 });
+        if (win.length > 1) { p.draws++; continue; }
+        p.total++; p.by[g.id] = (p.by[g.id] || 0) + 1;
+        ((days[date] = days[date] || [])).push({ uid: e.uid, gid: g.id, share: 1 });
       }
     }
   }
@@ -362,7 +373,8 @@ function leaderLine(list, done) {
   const firsts = list.filter((e) => e.rank === 1).map((e) => e.uid);
   const who = `<b>${firsts.map((u) => esc(nameOf(u))).join(" &amp; ")}</b>`;
   const many = firsts.length > 1;
-  return `${done ? "🏆" : "👑"} ${who} ${done ? (many ? "win" : "wins") : many ? "lead" : "leads"} with ${fmt(top.s)}`;
+  if (many) return `🤝 ${who} ${done ? "draw" : "are level"} on ${fmt(top.s)}`;
+  return `${done ? "🏆" : "👑"} ${who} ${done ? "wins" : "leads"} with ${fmt(top.s)}`;
 }
 
 function renderToday() {
@@ -397,7 +409,7 @@ function renderToday() {
       return `<article class="${cls}" style="--gc:${gc(g.id)}">
         <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3>${flip}</div>
         <div class="gwin">
-          <div class="champ">${champ}<div class="ctext"><div class="cflag">🏆 ${many ? "Shared win" : "Won the day"}</div><div class="cname">${esc(listNames(winners))}</div><div class="cscore">${fmt(top.s)}${g.max_score ? `<span class="of"> / ${fmt(g.max_score)}</span>` : ""}</div></div></div>
+          <div class="champ">${champ}<div class="ctext"><div class="cflag">${many ? "🤝 It's a draw" : "🏆 Won the day"}</div><div class="cname">${esc(listNames(winners))}</div><div class="cscore">${fmt(top.s)}${g.max_score ? `<span class="of"> / ${fmt(g.max_score)}</span>` : ""}</div></div></div>
           <div class="dpod" aria-label="Today's ${esc(g.name)} podium">${steps}</div>
         </div>
       </article>`;
@@ -406,7 +418,7 @@ function renderToday() {
       <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3><span class="gtop-r">${link}${flip}</span></div>
       <div class="gbody">
         ${mine
-          ? `<div class="mine"><span class="big">${fmt(mine.s)}</span>${g.max_score ? `<span class="of">/ ${fmt(g.max_score)}</span>` : ""}<span class="pill on">${mine.rank === 1 && list.length > 1 ? "👑 " : ""}#${mine.rank} of ${list.length}</span></div>`
+          ? `<div class="mine"><span class="big">${fmt(mine.s)}</span>${g.max_score ? `<span class="of">/ ${fmt(g.max_score)}</span>` : ""}<span class="pill on">${outcome(list, me.id) === "draw" ? "🤝 =" : outcome(list, me.id) === "win" ? "👑 #" : "#"}${mine.rank} of ${list.length}</span></div>`
           : `<div class="notyet">Not played yet</div>`}
         ${(() => { const d = mine && scores.get(`${me.id}|${g.id}|${today}`)?.details; return d && d.line ? `<div class="emojiline" title="${esc(tierLine(d.tiers))}">${esc(graphemes(d.line).slice(0, 7).join(""))}</div>` : ""; })()}
         <div class="played"><span class="stackav">${list.slice(0, 8).map((e) => av(e.uid, "s")).join("")}</span><span>${list.length} of ${fam} played today</span></div>
@@ -445,21 +457,22 @@ function renderBoards() {
   const g = gById(st.game), days = +st.period, low = g.better === "low";
   const pane = $("#tab-boards"); pane.style.setProperty("--gc", gc(g.id));
   const rows = gameTable(g.id, days, true);
-  const sk = ["avg", "best", "total", "wins", "played", "streak"].includes(st.sort) ? st.sort : st.pm;
+  const sk = ["avg", "best", "total", "wins", "draws", "played", "streak"].includes(st.sort) ? st.sort : st.pm;
   const lowFirst = (k) => low && (k === "avg" || k === "best");
   const cmp = (k) => (a, b) => {
     const x = a[k], y = b[k];
     if (x == null || y == null) return (x == null) - (y == null);
     return lowFirst(k) ? x - y : y - x;
   };
-  // Ties on days won go to the better average, and ties on anything else go to more days won.
-  const second = sk === "wins" ? cmp("avg") : cmp("wins");
+  // Ties on days won go to more draws, then the better average; ties on anything else go to more days won.
+  const second = sk === "wins" ? (a, b) => cmp("draws")(a, b) || cmp("avg")(a, b) : cmp("wins");
   rows.sort((a, b) => cmp(sk)(a, b) || second(a, b) || b.played - a.played);
-  rows.forEach((r, i, a) => (r.rank = i && a[i - 1][sk] === r[sk] ? a[i - 1].rank : i + 1));
-  const label = { avg: "average score", best: "best score", total: "total points", wins: "days won", played: "games played", streak: "current streak" }[sk];
+  rows.forEach((r, i, a) => (r.rank = i && a[i - 1][sk] === r[sk] && (sk !== "wins" || a[i - 1].draws === r.draws) ? a[i - 1].rank : i + 1));
+  const label = { avg: "average score", best: "best score", total: "total points", wins: "days won", draws: "draws", played: "games played", streak: "current streak" }[sk];
   $("#rankNote").textContent = `Ranked by ${label} · ${days ? `last ${days} days` : "all time"}`;
 
-  const valOf = (r) => sk === "wins" ? `${r.wins} ${r.wins === 1 ? "day" : "days"}`
+  const valOf = (r) => sk === "wins" ? `${r.wins} ${r.wins === 1 ? "day" : "days"}${drawsTag(r.draws)}`
+    : sk === "draws" ? `🤝 ${r.draws}`
     : sk === "streak" ? (r.streak ? `🔥 ${r.streak}` : "–")
     : r[sk] == null ? "–" : fmt(r[sk]);
   $("#podium").innerHTML = rows.some((r) => r.played) ? podiumHTML(rows, valOf) : "";
@@ -468,26 +481,26 @@ function renderBoards() {
   const period = rowsFor(g.id, days ? daysAgo(days - 1) : null);
   let hi = null; for (const r of period) if (!hi || better(g, Number(r.score), Number(hi.score))) hi = r;
   const famAvg = period.length ? period.reduce((s, r) => s + Number(r.score), 0) / period.length : null;
-  const mostWins = rows.slice().sort((a, b) => b.wins - a.wins)[0];
+  const mostWins = rows.slice().sort((a, b) => b.wins - a.wins || b.draws - a.draws)[0];
   const longest = rows.slice().sort((a, b) => b.streak - a.streak)[0];
   const tile = (v, l, s) => `<div class="tile"><span class="label">${l}</span><span class="v">${v}</span><span class="s">${s}</span></div>`;
   $("#tiles").innerHTML = period.length
     ? tile(hi ? fmt(hi.score) : "–", low ? "Lowest score" : "Top score", hi ? `${esc(nameOf(hi.player_id))} · ${nice(hi.play_date, { month: "short", day: "numeric" })}` : "")
       + tile(fmt(famAvg), "Family average", `${period.length} scores posted`)
-      + tile(mostWins && mostWins.wins ? mostWins.wins : "–", "Most wins", mostWins && mostWins.wins ? esc(nameOf(mostWins.uid)) : "No wins yet")
+      + tile(mostWins && mostWins.wins ? mostWins.wins : "–", "Most wins", mostWins && mostWins.wins ? esc(nameOf(mostWins.uid)) + (mostWins.draws ? ` · ${mostWins.draws} 🤝` : "") : "No wins yet")
       + tile(longest && longest.streak ? `🔥 ${longest.streak}` : "–", "Hot streak", longest && longest.streak ? `${esc(nameOf(longest.uid))} · days in a row` : "Nobody on a streak")
     : "";
 
   // table
-  const head = `<tr><th>#</th><th>Player</th>${sortHead("avg", "Avg", sk === "avg")}${sortHead("best", "Best", sk === "best")}${low ? "" : sortHead("total", "Total", sk === "total")}${sortHead("wins", "Wins", sk === "wins")}${sortHead("played", "Played", sk === "played")}${sortHead("streak", "🔥", sk === "streak")}<th>Form</th></tr>`;
+  const head = `<tr><th>#</th><th>Player</th>${sortHead("avg", "Avg", sk === "avg")}${sortHead("best", "Best", sk === "best")}${low ? "" : sortHead("total", "Total", sk === "total")}${sortHead("wins", "Wins", sk === "wins")}${sortHead("draws", "🤝", sk === "draws")}${sortHead("played", "Played", sk === "played")}${sortHead("streak", "🔥", sk === "streak")}<th>Form</th></tr>`;
   $("#board").innerHTML = rows.some((r) => r.played)
     ? `<table><thead>${head}</thead><tbody>${rows.map((r) => `<tr class="${r.uid === me.id ? "me" : ""}">
         <td class="rank ${MEDAL[r.rank] ? "" : "plain"}">${MEDAL[r.rank] || r.rank}</td>
         <td class="pl">${person(r.uid)}</td>
-        <td>${fmt(r.avg)}</td><td>${fmt(r.best)}</td>${low ? "" : `<td>${r.played ? fmt(r.total) : "–"}</td>`}<td>${r.wins}</td><td>${r.played}</td><td>${r.streak || "–"}</td>
+        <td>${fmt(r.avg)}</td><td>${fmt(r.best)}</td>${low ? "" : `<td>${r.played ? fmt(r.total) : "–"}</td>`}<td>${r.wins}</td><td>${r.draws || "–"}</td><td>${r.played}</td><td>${r.streak || "–"}</td>
         <td class="spark">${sparkline(r.form, g)}</td></tr>`).join("")}</tbody></table>`
     : `<div class="empty"><b>No ${esc(g.name)} scores ${days ? `in the last ${days} days` : "yet"}</b>Play today's ${esc(g.name)} and lock in your score to get on the board.</div>`;
-  $("#boardNote").textContent = `A daily win needs at least two players. Form shows each person's last 10 ${g.name} scores. Tap a column to re-rank the table and podium.`;
+  $("#boardNote").textContent = `A daily win needs at least two players; sharing the top score is a draw (🤝). Form shows each person's last 10 ${g.name} scores. Tap a column to re-rank the table and podium.`;
 
   // Krillion: answer tiers (from pasted results)
   const kw = $("#krill"), kh = $("#krillH");
@@ -538,7 +551,7 @@ function renderBoards() {
       `<tr class="${u === me.id ? "me" : ""}"><td></td><td class="pl">${person(u)}</td>${dayList.map((d) => {
         const e = ranked[d].find((x) => x.uid === u);
         if (!e) return `<td class="cell">·</td>`;
-        return `<td class="cell ${e.rank === 1 && ranked[d].length > 1 ? "win" : ""}">${fmt(e.s)}</td>`;
+        return `<td class="cell ${outcome(ranked[d], u) || ""}">${fmt(e.s)}</td>`;
       }).join("")}</tr>`).join("")}</tbody></table>`;
   }
 }
@@ -547,24 +560,25 @@ function renderBoards() {
 const RACE_ROW = 54;
 let raceTimer = null;
 function raceOrder(pts) {
-  return Object.keys(pts).sort((a, b) => pts[b].total - pts[a].total || nameOf(a).localeCompare(nameOf(b)));
+  return Object.keys(pts).sort((a, b) => pts[b].total - pts[a].total || (pts[b].draws || 0) - (pts[a].draws || 0) || nameOf(a).localeCompare(nameOf(b)));
 }
 function renderAllGames() {
   stopRace();
   const days = +st.period, from = days ? daysAgo(days - 1) : null;
   const { pts, days: byDay } = racePoints(from);
   const order = raceOrder(pts);
-  const rows = order.map((uid) => ({ uid, wins: pts[uid].total }));
-  rows.forEach((r, i, a) => (r.rank = i && a[i - 1].wins === r.wins ? a[i - 1].rank : i + 1));
-  const any = rows.some((r) => r.wins > 0);
+  const rows = order.map((uid) => ({ uid, wins: pts[uid].total, draws: pts[uid].draws }));
+  rows.forEach((r, i, a) => (r.rank = i && a[i - 1].wins === r.wins && a[i - 1].draws === r.draws ? a[i - 1].rank : i + 1));
+  const any = rows.some((r) => r.wins > 0 || r.draws > 0);
   $("#tab-boards").style.setProperty("--gc", "var(--accent)");
-  $("#rankNote").textContent = `Ranked by points: one for each game won each day · ${days ? `last ${days} days` : "all time"}`;
-  $("#podium").innerHTML = any ? podiumHTML(rows, (r) => ptsWord(r.wins)) : "";
+  $("#rankNote").textContent = `Ranked by days won, one for each game won each day; draws 🤝 break ties · ${days ? `last ${days} days` : "all time"}`;
+  $("#podium").innerHTML = any ? podiumHTML(rows, (r) => `${r.wins} ${r.wins === 1 ? "day" : "days"}${drawsTag(r.draws)}`) : "";
 
   const dates = Object.keys(byDay).sort();
-  const avail = dates.length ? games.reduce((n, g) => n + Object.values(byDate(g.id, from)).filter((l) => l.length > 1).length, 0) : 0;
+  const avail = games.reduce((n, g) => n + Object.values(byDate(g.id, from)).filter((l) => l.length > 1).length, 0);
+  const won = rows.reduce((n, r) => n + r.wins, 0), drawn = avail - won;
   $("#raceSub").textContent = any
-    ? `${fmtPts(avail)} ${avail === 1 ? "point" : "points"} handed out over ${dates.length} ${dates.length === 1 ? "day" : "days"}`
+    ? `${won} ${won === 1 ? "game" : "games"} won${drawn ? ` and ${drawn} drawn` : ""} over ${dates.length} ${dates.length === 1 ? "day" : "days"}`
     : "";
   $("#raceReplay").hidden = dates.length < 2;
   const race = $("#race");
@@ -572,16 +586,16 @@ function renderAllGames() {
       <span class="rwho">${av(uid, "m")}<span class="nm">${esc(nameOf(uid))}</span></span>
       <span class="rtrack"><span class="rbar">${games.map((g) => `<span class="rseg" data-g="${esc(g.id)}" style="--gc:${gc(g.id)}"></span>`).join("")}</span><span class="rval"></span></span>
     </div>`).join("")
-    : `<div class="empty"><b>No points yet</b>Win a game on a day when at least two of you play to get on the board.</div>`;
+    : `<div class="empty"><b>No wins yet</b>Win a game on a day when at least two of you play to get on the board.</div>`;
   if (any) race.style.height = order.length * RACE_ROW + "px"; else race.style.height = "";
   $("#raceKey").innerHTML = any ? games.map((g) => `<span style="--gc:${gc(g.id)}"><i></i>${esc(g.name)}</span>`).join("") : "";
   if (any) drawRace(pts);
 
   const totals = Object.fromEntries(games.map((g) => [g.id, order.reduce((n, u) => n + (pts[u].by[g.id] || 0), 0)]));
   $("#allTable").innerHTML = any
-    ? `<table class="alltable"><thead><tr><th>#</th><th>Player</th>${games.map((g) => `<th style="color:${gc(g.id)}">${esc(g.name)}</th>`).join("")}<th>Points</th></tr></thead><tbody>
-      ${rows.map((r) => `<tr class="${r.uid === me.id ? "me" : ""}"><td class="rank ${MEDAL[r.rank] ? "" : "plain"}">${MEDAL[r.rank] || r.rank}</td><td class="pl">${person(r.uid)}</td>${games.map((g) => `<td>${pts[r.uid].by[g.id] ? fmtPts(pts[r.uid].by[g.id]) : "–"}</td>`).join("")}<td class="tot">${fmtPts(r.wins)}</td></tr>`).join("")}
-      <tr class="famrow"><td></td><td class="pl">Up for grabs</td>${games.map((g) => `<td>${fmtPts(totals[g.id])}</td>`).join("")}<td class="tot">${fmtPts(avail)}</td></tr></tbody></table>`
+    ? `<table class="alltable"><thead><tr><th>#</th><th>Player</th><th>Won</th><th>🤝 Drew</th>${games.map((g) => `<th style="color:${gc(g.id)}">${esc(g.name)}</th>`).join("")}</tr></thead><tbody>
+      ${rows.map((r) => `<tr class="${r.uid === me.id ? "me" : ""}"><td class="rank ${MEDAL[r.rank] ? "" : "plain"}">${MEDAL[r.rank] || r.rank}</td><td class="pl">${person(r.uid)}</td><td class="tot">${fmtPts(r.wins)}</td><td>${r.draws || "–"}</td>${games.map((g) => `<td>${pts[r.uid].by[g.id] ? fmtPts(pts[r.uid].by[g.id]) : "–"}</td>`).join("")}</tr>`).join("")}
+      <tr class="famrow"><td></td><td class="pl">Family</td><td class="tot">${fmtPts(won)}</td><td>${drawn || "–"}</td>${games.map((g) => `<td>${fmtPts(totals[g.id])}</td>`).join("")}</tr></tbody></table>`
     : "";
 }
 // Lay the bars out for a set of points: longest bar on top, each bar split by game.
@@ -628,9 +642,10 @@ function renderFamily() {
   }
   const list = Object.values(players); // family order: Dad, Mum, Tobey, Jas
   $("#familyList").innerHTML = list.map((p) => {
-    const wins = games.reduce((s, g) => s + (gameTable(g.id, 0).find((r) => r.uid === p.id)?.wins || 0), 0);
+    const mine = games.map((g) => gameTable(g.id, 0).find((r) => r.uid === p.id) || { wins: 0, draws: 0 });
+    const wins = mine.reduce((s, r) => s + r.wins, 0), draws = mine.reduce((s, r) => s + r.draws, 0);
     const played = [...scores.values()].filter((r) => r.player_id === p.id).length;
-    return `<div class="fam">${av(p.id, "m")}<div style="min-width:0"><div class="nm">${esc(p.name)}${p.id === me.id ? " (you)" : ""}</div><small>${played} scores · ${wins} wins${p.is_admin ? " · admin" : ""}</small></div></div>`;
+    return `<div class="fam">${av(p.id, "m")}<div style="min-width:0"><div class="nm">${esc(p.name)}${p.id === me.id ? " (you)" : ""}</div><small>${played} scores · ${winsText(wins, draws)}${p.is_admin ? " · admin" : ""}</small></div></div>`;
   }).join("");
 
   $("#adminPanel").hidden = !me.is_admin;
@@ -752,7 +767,7 @@ function openYesterday() {
     const win = list.filter((e) => e.rank === 1), rest = list.filter((e) => e.rank !== 1);
     const body = !list.length
       ? `<div class="yempty">Nobody played ${esc(g.name)}. 🦗</div>`
-      : `<div class="ywin">${win.map((e) => av(e.uid, "l")).join("")}<div><div class="who-n">${esc(listNames(win.map((e) => e.uid)))}</div><div class="sc">${fmt(win[0].s)}${g.max_score ? ` <span class="muted" style="font-size:15px">/ ${fmt(g.max_score)}</span>` : ""}</div>${win[0].d && win[0].d.line ? `<div class="emojiline">${esc(graphemes(win[0].d.line).slice(0, 7).join(""))}</div>` : ""}${list.length === 1 ? `<div class="note">Only player. Still counts in our hearts.</div>` : ""}</div></div>
+      : `<div class="ywin">${win.map((e) => av(e.uid, "l")).join("")}<div><div class="who-n">${esc(listNames(win.map((e) => e.uid)))}${win.length > 1 && list.length > 1 ? " 🤝 drew" : ""}</div><div class="sc">${fmt(win[0].s)}${g.max_score ? ` <span class="muted" style="font-size:15px">/ ${fmt(g.max_score)}</span>` : ""}</div>${win[0].d && win[0].d.line ? `<div class="emojiline">${esc(graphemes(win[0].d.line).slice(0, 7).join(""))}</div>` : ""}${list.length === 1 ? `<div class="note">Only player. Still counts in our hearts.</div>` : ""}</div></div>
          ${rest.length ? `<div class="yrest">${rest.map((e) => `<span>${MEDAL[e.rank] || "#" + e.rank} ${esc(nameOf(e.uid))} · ${fmt(e.s)}</span>`).join("")}</div>` : ""}`;
     return `<div class="ygame" style="--gc:${gc(g.id)}"><div class="ygame-h"><span>${esc(g.name)}</span><span>${list.length} played</span></div>${body}</div>`;
   }).join("");
@@ -806,7 +821,7 @@ function checkWins() {
     st.flipped.delete(g.id); // show the winner side
     const youWon = winners.includes(me.id);
     toast(youWon ? `🏆 You won today's ${g.name}! Take a bow.` : `🏆 ${listNames(winners)} won today's ${g.name}!`, true);
-    localNotify(`🏆 ${listNames(winners)} won the day!`, `${g.name}: ${list.map((e) => `${MEDAL[e.rank] || "#" + e.rank} ${nameOf(e.uid)} ${fmt(e.s)}`).join(" · ")}`, `win-${g.id}`);
+    localNotify(winners.length > 1 ? `🤝 ${listNames(winners)} drew!` : `🏆 ${listNames(winners)} won the day!`, `${g.name}: ${list.map((e) => `${MEDAL[e.rank] || "#" + e.rank} ${nameOf(e.uid)} ${fmt(e.s)}`).join(" · ")}`, `win-${g.id}`);
     confetti(["#F2B21B", "#FFD95A", ...winners.map((u) => safeColor(players[u]?.color))]);
     if (navigator.vibrate) navigator.vibrate([30, 60, 30]);
   }
@@ -1032,11 +1047,11 @@ function wire() {
     if (chip) { st.post = chip.dataset.g; renderPostGame(); prefill(); return; }
     if (t.closest("[data-close]") || t.classList.contains("sheet-wrap")) { closeSheets(); return; }
     const gp = t.closest("[data-game]");
-    if (gp) { st.game = gp.dataset.game; st.sort = null; save("lii.game", st.game); renderBoards(); return; }
+    if (gp) { st.game = gp.dataset.game; st.sort = null; save("lii.board", st.game); renderBoards(); return; }
     const per = t.closest("#period button");
     if (per) { st.period = per.dataset.p; renderBoards(); return; }
     const pm = t.closest("#podMetric button");
-    if (pm) { st.pm = pm.dataset.m; st.sort = null; save("lii.pm", st.pm); renderBoards(); return; }
+    if (pm) { st.pm = pm.dataset.m; st.sort = null; save("lii.boardPm", st.pm); renderBoards(); return; }
     const so = t.closest("[data-sort]");
     if (so) { st.sort = so.dataset.sort; renderBoards(); return; }
     const rm = t.closest("[data-rm]");

@@ -102,7 +102,7 @@ async function onScore(me: string, gameId: string, date: string) {
     const winners = list.filter((e) => e.rank === 1).map((e) => e.uid);
     if (await once(`win|${g.id}|${date}|${[...winners].sort().join(",")}`)) {
       sent += await send(all, {
-        title: `🏆 ${names(winners.map(nameOf))} won the day!`,
+        title: winners.length > 1 ? `🤝 ${names(winners.map(nameOf))} drew!` : `🏆 ${names(winners.map(nameOf))} won the day!`,
         body: `${g.name}: ${list.map((e) => `${MEDAL[e.rank] || "#" + e.rank} ${nameOf(e.uid)} ${fmt(e.s)}`).join(" · ")}`,
         tag: `win-${g.id}-${date}`,
         url: "./",
