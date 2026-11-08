@@ -149,16 +149,18 @@ function jingle() {
       let t = t0;
       for (const [f, len] of tune) { lead(out, f, t, beat * len); t += beat * len; }
       const bars = [[73.4, [293.7, 370, 440]], [61.7, [246.9, 293.7, 370]], [82.4, [246.9, 329.6, 392]], [55, [220, 277.2, 329.6]]];
+      // Every bar, the last one included, keeps the record's groove, so the tune stops right on
+      // "you gave it away" instead of slowing into a made-up ending.
       bars.forEach(([root, chord], b) => {
-        const bt = t0 + b * 4 * beat, last = b === bars.length - 1;
-        synthChord(out, chord, bt, (last ? 5 : 4) * beat);
-        for (let i = 0; i < (last ? 1 : 8); i++) synthBass(out, i % 2 ? root * 2 : root, bt + i * beat / 2, last ? beat * 3 : beat / 2);
-        for (let i = 0; i < (last ? 1 : 4); i++) {
+        const bt = t0 + b * 4 * beat;
+        synthChord(out, chord, bt, 4 * beat);
+        for (let i = 0; i < 8; i++) synthBass(out, i % 2 ? root * 2 : root, bt + i * beat / 2, beat / 2);
+        for (let i = 0; i < 4; i++) {
           drum(out, i % 2 ? "snare" : "kick", bt + i * beat);
           for (let h = 0; h < 2; h++) drum(out, "hat", bt + i * beat + h * beat / 2);
         }
       });
-      for (let i = 0; i < 52; i++) shake(out, t0 + i * beat / 4, i % 4 === 0 ? 1 : i % 2 ? 0.35 : 0.6);
+      for (let i = 0; i < 64; i++) shake(out, t0 + i * beat / 4, i % 4 === 0 ? 1 : i % 2 ? 0.35 : 0.6);
       tuneEnd = t0 + 16 * beat;
       idleSoon(tuneEnd - a.currentTime + 2);
       showStop(tuneEnd - a.currentTime);
