@@ -76,11 +76,15 @@ function pop(el, text) {
 }
 
 /* jingle bells, played with WebAudio (no sound files)
-   Phones: iPhone mutes WebAudio when the ring/silent switch is on, so while the bells play we ask
-   for the "playback" audio session (iOS 17+), or play a silent <audio> clip on older iPhones,
-   which does the same. The audio is unlocked on the first tap anywhere so the bells start at once. */
-let ac = null, quiet = null, sessT = 0;
+   Phones: by default iPhone treats web sounds like ringtones, so the ring/silent switch mutes them.
+   We play the bells as media instead (like a video), so they follow the media volume and play with
+   the ringer off. iOS 17+: the "playback" audio session, set before the AudioContext is made (a
+   context made earlier stays on the ringer channel, so it is replaced). Older iPhones: a looping
+   silent <audio> clip plays alongside the bells, which moves the page onto the media channel.
+   The sound stops (and other apps' music can carry on) once the tune is over. */
+let ac = null, quiet = null, idleT = 0, media = false;
 const SILENT = "data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && "ontouchend" in document);
 function audio() {
   if (!ac) {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -90,28 +94,40 @@ function audio() {
   if (ac.state !== "running") ac.resume().catch(() => {});
   return ac;
 }
-function loudSession() {
+function mediaChannel() {
   try {
     const s = navigator.audioSession;
     if (s && "type" in s) {
-      s.type = "playback";
-      clearTimeout(sessT); sessT = setTimeout(() => { try { s.type = "auto"; } catch (e) {} }, 4000);
-    } else if (/iP(hone|ad|od)|Macintosh/.test(navigator.userAgent) && "ontouchend" in document) {
-      quiet = quiet || Object.assign(new Audio(SILENT), { loop: false, playsInline: true });
+      if (s.type !== "playback") s.type = "playback";
+      if (!media) { media = true; if (ac) { ac.close().catch(() => {}); ac = null; } }
+    } else if (IOS) {
+      quiet = quiet || Object.assign(new Audio(SILENT), { loop: true, playsInline: true });
+      quiet.setAttribute("playsinline", ""); quiet.setAttribute("x-webkit-airplay", "deny");
       quiet.play().catch(() => {});
     }
   } catch (e) {}
 }
+function idleSoon(secs) {
+  clearTimeout(idleT);
+  idleT = setTimeout(() => {
+    try { if (quiet) quiet.pause(); } catch (e) {}
+    try { if (ac && ac.state === "running") ac.suspend().catch(() => {}); } catch (e) {}
+  }, secs * 1000);
+}
+// Wake the audio on the first tap so the first jingle starts at once. On iOS 17+ we wait for the
+// first jingle instead, so a tap anywhere never pauses music from another app.
 function unlock() {
+  if (navigator.audioSession && "type" in navigator.audioSession) return stopUnlock();
   const a = audio();
   if (!a) return;
   try { const s = a.createBufferSource(); s.buffer = a.createBuffer(1, 1, 22050); s.connect(a.destination); s.start(0); } catch (e) {}
-  if (a.state === "running") for (const ev of ["touchend", "click", "keydown"]) document.removeEventListener(ev, unlock, true);
+  if (a.state === "running") { stopUnlock(); idleSoon(1); }
 }
+function stopUnlock() { for (const ev of ["touchend", "click", "keydown"]) document.removeEventListener(ev, unlock, true); }
 for (const ev of ["touchend", "click", "keydown"]) document.addEventListener(ev, unlock, true);
 function jingle() {
   try {
-    loudSession();
+    mediaChannel();
     const a = audio();
     if (!a) return;
     const play = () => {
@@ -122,6 +138,7 @@ function jingle() {
       for (const [f, len] of tune) { bell(f, t); t += beat * len; }
       // sleigh-bell shakes underneath
       for (let i = 0; i < 10; i++) shake(t0 + i * beat * 2);
+      idleSoon(t - a.currentTime + 1.2);
     };
     // A phone's audio can still be waking up; start the tune once it is, so no notes get squashed.
     if (a.state === "running") play(); else a.resume().then(play, () => {});
