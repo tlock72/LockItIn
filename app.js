@@ -401,8 +401,8 @@ function dayBoard(g, list) {
   const n = list.length;
   const rows = list.map((e, i) => {
     const h = n > 1 ? 1 - ((e.rank - 1) / (n - 1)) * 0.7 : 1; // level steps for a draw
-    return `<div role="listitem" class="dp p${i + 1}${e.rank === 1 && n > 1 ? " w" : ""}${e.uid === me.id ? " me" : ""}" title="${esc(nameOf(e.uid))}: ${fmt(e.s)}">
-      <span class="dpm">${MEDAL[e.rank] || "#" + e.rank}</span>${av(e.uid, "s")}<span class="dpn">${esc(nameOf(e.uid))}</span><span class="dps">${fmt(e.s)}</span>
+    return `<div role="listitem" class="dp p${i + 1} r${Math.min(e.rank, 4)}${e.rank === 1 && n > 1 ? " w" : ""}${e.uid === me.id ? " me" : ""}" title="${esc(nameOf(e.uid))}: ${fmt(e.s)}">
+      <span class="dprk" aria-hidden="true">${e.rank}</span><span class="dpm">${MEDAL[e.rank] || "#" + e.rank}</span>${av(e.uid, "s")}<span class="dpn">${esc(nameOf(e.uid))}</span><span class="dps">${fmt(e.s)}</span>
       <span class="dpstep" style="--h:${h.toFixed(2)}">${e.rank}</span></div>`;
   }).concat(rest.map((u, i) => `<div role="listitem" class="dp p${n + i + 1} none${u === me.id ? " me" : ""}" title="${esc(nameOf(u))}: not played yet">
       <span class="dpm">·</span>${av(u, "s")}<span class="dpn">${esc(nameOf(u))}</span><span class="dps">–</span>

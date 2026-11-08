@@ -465,6 +465,21 @@ td.spark svg{display:block}
 .dp .dpn,.dp .dpstep{display:none}
 .dp.none{opacity:.5;font-weight:700}
 .dp.none .av{filter:grayscale(1)}
+/* compact board reads as a ranking: a numbered badge on each face, gold/silver/bronze chips, bold scores */
+.dpod{padding-top:5px}
+.dp{position:relative;padding:3px 8px 3px 3px;font-size:14px}
+.dp .dps{font-family:var(--f-display);font-weight:800}
+.dp .dprk{position:absolute;top:-6px;left:-3px;z-index:1;min-width:17px;height:17px;padding:0 4px;border-radius:999px;display:grid;place-items:center;
+  font:800 11px/1 var(--f-display);color:#fff;background:color-mix(in srgb,var(--gc) 70%,#000);box-shadow:0 0 0 2px var(--surface)}
+.dp.r1 .dprk{background:var(--gold);color:#3B2A00}
+.dp.r2 .dprk{background:var(--silver);color:#1F2633}
+.dp.r3 .dprk{background:var(--bronze);color:#3A1E06}
+.dp.r1{background:color-mix(in srgb,var(--gold) 30%,var(--surface))}
+.dp.r2{background:color-mix(in srgb,var(--silver) 26%,var(--surface))}
+.dp.r3{background:color-mix(in srgb,var(--bronze) 22%,var(--surface))}
+.dp.r1 .dps{color:color-mix(in srgb,var(--gold) 45%,var(--ink))}
+.dp.r1 .av{box-shadow:0 0 0 2px var(--gold)}
+.dpod:has(.dp.r1 + .dp.r1) .dp.r1 .dps{color:inherit}
 /* very short card: the leaderboard says who's ahead, so drop the leader line */
 @container (max-height:150px){.gbody .leader{display:none}}
 
@@ -490,7 +505,9 @@ td.spark svg{display:block}
   .cscore{font-size:clamp(18px,5cqh,24px)}
   .dpod{align-items:flex-end;gap:6px;margin:0 -4px}
   .dp{flex-direction:column;justify-content:flex-end;gap:3px;padding:0;background:none;border-radius:0;outline:0}
-  .dp.w{background:none}
+  .dp.w,.dp.r1,.dp.r2,.dp.r3{background:none}
+  .dp .dprk{display:none}
+  .dp.r1 .av{box-shadow:0 0 0 2px var(--surface)}
   .dp.p1{order:2}.dp.p2{order:1}.dp.p3{order:3}.dp.p4{order:4}.dp.p5{order:5}.dp.p6{order:6}
   .dp .av{--s:clamp(30px,9cqh,40px)}
   .dp.me{outline:0}
@@ -507,7 +524,9 @@ td.spark svg{display:block}
   /* on the result side, the board is a ranked list (the podium is for the winner side) */
   .gbody .dpod{flex-direction:column;align-items:stretch;gap:5px}
   .gbody .dp{order:0;flex:none;flex-direction:row;justify-content:flex-start;gap:8px;padding:3px 12px 3px 4px;border-radius:999px;background:var(--soft)}
-  .gbody .dp.w{background:color-mix(in srgb,var(--gold) 28%,var(--surface))}
+  .gbody .dp.r1{background:color-mix(in srgb,var(--gold) 28%,var(--surface))}
+  .gbody .dp.r2{background:color-mix(in srgb,var(--silver) 24%,var(--surface))}
+  .gbody .dp.r3{background:color-mix(in srgb,var(--bronze) 20%,var(--surface))}
   .gbody .dp.me{outline:2px solid color-mix(in srgb,var(--gc) 55%,transparent)}
   .gbody .dp .dpm{order:0;width:22px;text-align:center;font-size:15px}
   .gbody .dp .av{--s:28px}
