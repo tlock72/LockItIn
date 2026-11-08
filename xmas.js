@@ -58,6 +58,8 @@ let laughing = false;
 function hoHoHo(from) {
   const host = from && (from.closest(".hohoho, .who-ho") || from);
   if (host) { host.classList.remove("laugh"); void host.offsetWidth; host.classList.add("laugh"); setTimeout(() => host.classList.remove("laugh"), 1300); }
+  // Tap again while the song is playing: stop it.
+  if (playing()) { stopTune(); return; }
   if (laughing) return;
   laughing = true; setTimeout(() => (laughing = false), 1500);
   if (from) pop(from, "Ho Ho Ho!");
@@ -131,11 +133,12 @@ function jingle() {
     const a = audio();
     if (!a) return;
     const play = () => {
+      starting = false;
       if (a.currentTime < tuneEnd) return; // still playing: don't pile tunes on top of each other
       // The first line of the "Last Christmas" (Wham!) chorus at the record's 107 bpm, in D major,
       // over its chords (D, Bm, Em, A), on the record's line-up: an 80s polysynth lead and chords
       // (Juno-style, with chorus), synth bass, LinnDrum-style drum machine and sleigh bells.
-      const beat = 60 / 107, t0 = a.currentTime + 0.06, out = bus();
+      const beat = 60 / 107, t0 = a.currentTime + 0.06, out = tuneOut();
       const A4 = 440, B4 = 493.9, Cs5 = 554.4, D5 = 587.3, E5 = 659.3, Fs5 = 740;
       const tune = [
         [E5, 1.5], [E5, .5], [D5, 1.5], [A4, .5],                   // Last Christ-mas, I
@@ -160,10 +163,26 @@ function jingle() {
       idleSoon(tuneEnd - a.currentTime + 2);
     };
     // A phone's audio can still be waking up; start the tune once it is, so no notes get squashed.
-    if (a.state === "running") play(); else a.resume().then(play, () => {});
+    if (a.state === "running") play(); else { starting = true; a.resume().then(play, () => (starting = false)); }
   } catch (e) {}
 }
-let tuneEnd = 0, busCtx = null, busNodes = null;
+let tuneEnd = 0, busCtx = null, busNodes = null, tune = null, starting = false;
+function playing() { return starting || !!(ac && tune && ac.currentTime < tuneEnd); }
+// Each tune plays through its own volume knob, so it can be faded out if someone taps to stop it.
+function tuneOut() {
+  const b = bus(), dry = ac.createGain(), rev = ac.createGain();
+  dry.connect(b.dry); rev.connect(b.rev);
+  return (tune = { dry, rev });
+}
+function stopTune() {
+  starting = false;
+  if (!ac || !tune) return;
+  const t = ac.currentTime, { dry, rev } = tune;
+  for (const g of [dry, rev]) { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 0.15); }
+  setTimeout(() => { try { dry.disconnect(); rev.disconnect(); } catch (e) {} }, 300);
+  tune = null; tuneEnd = 0;
+  idleSoon(2);
+}
 // Shared output: a gentle compressor plus a reverb send (the reverb is made from decaying noise).
 function bus() {
   if (busCtx === ac) return busNodes;
