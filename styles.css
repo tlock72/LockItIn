@@ -455,6 +455,19 @@ td.spark svg{display:block}
 .cname{font-family:var(--f-display);font-weight:800;font-size:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cscore{font-family:var(--f-display);font-weight:800;color:var(--gc);font-size:15px}
 .cscore .of{color:var(--muted);font-size:.85em}
+/* short winner card (phones): smaller face, name and score share a line, so the board below always fits */
+@container (max-height:174px){
+  .gwin{padding:4px 12px 8px;gap:4px;align-content:center}
+  .champ{gap:10px}
+  .champav{padding-top:10px}
+  .champav .av{--s:40px}
+  .ctext{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;line-height:1.1}
+  .cflag{flex-basis:100%}
+  .cname{min-width:0;flex:0 1 auto}
+  .cscore{flex:none}
+  .gwin .dpod{padding-top:4px}
+  .gwin .dp{padding:2px 8px 2px 2px}
+}
 .dpod{display:flex;gap:5px;min-width:0}
 .dp{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:4px;padding:2px 6px 2px 2px;border-radius:999px;background:var(--soft);font-size:12px;font-weight:800}
 .dp.w{background:color-mix(in srgb,var(--gold) 28%,var(--surface))}
