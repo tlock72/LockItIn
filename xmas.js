@@ -131,21 +131,38 @@ function jingle() {
     const a = audio();
     if (!a) return;
     const play = () => {
-      const E = 659.3, G = 784, C = 523.3, D = 587.3;
-      const tune = [[E, 1], [E, 1], [E, 2], [E, 1], [E, 1], [E, 2], [E, 1], [G, 1], [C, 1.5], [D, .5], [E, 3]];
-      const t0 = a.currentTime + 0.05, beat = 0.15;
+      if (a.currentTime < tuneEnd) return; // still playing: don't pile tunes on top of each other
+      // The opening hook of "Last Christmas" (Wham!), in D major, about 108 bpm, with sleigh bells
+      // and soft chords underneath (D, then B minor), like the record's intro.
+      const A4 = 440, B4 = 493.9, D5 = 587.3, E5 = 659.3, Fs5 = 740;
+      const tune = [[E5, 1], [E5, .5], [D5, 1.5], [0, .5], [A4, .5], [E5, .5], [E5, .5], [Fs5, .5], [D5, 1.5], [B4, .5], [B4, 1.5]];
+      const t0 = a.currentTime + 0.05, beat = 0.56;
       let t = t0;
-      for (const [f, len] of tune) { bell(f, t); t += beat * len; }
-      // sleigh-bell shakes underneath
-      for (let i = 0; i < 10; i++) shake(t0 + i * beat * 2);
-      idleSoon(t - a.currentTime + 1.2);
+      for (const [f, len] of tune) { if (f) bell(f, t); t += beat * len; }
+      pad([146.8, 185, 220], t0, beat * 3.5);              // D
+      pad([123.5, 146.8, 185], t0 + beat * 3.5, beat * 5);  // Bm
+      // sleigh-bell shakes on every half beat
+      for (let i = 0; i < 17; i++) shake(t0 + i * beat / 2);
+      tuneEnd = t;
+      idleSoon(t - a.currentTime + 1.5);
     };
     // A phone's audio can still be waking up; start the tune once it is, so no notes get squashed.
     if (a.state === "running") play(); else a.resume().then(play, () => {});
   } catch (e) {}
 }
+let tuneEnd = 0;
+// soft synth chord, fading in and out
+function pad(freqs, t, len) {
+  for (const f of freqs) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = "triangle"; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.045, t + 0.12);
+    g.gain.setValueAtTime(0.045, t + len - 0.2); g.gain.exponentialRampToValueAtTime(0.0001, t + len + 0.3);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + len + 0.35);
+  }
+}
 function bell(f, t) {
-  for (const [mult, vol, dec] of [[1, .22, .9], [2.76, .06, .35], [5.4, .03, .2]]) {
+  for (const [mult, vol, dec] of [[1, .22, .9], [2, .07, .5], [2.76, .04, .3], [5.4, .02, .2]]) {
     const o = ac.createOscillator(), g = ac.createGain();
     o.type = "sine"; o.frequency.value = f * mult;
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
