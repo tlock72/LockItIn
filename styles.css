@@ -233,7 +233,8 @@ input[type="date"]{min-height:52px}
   .mine .of{font-size:14px}
   .notyet{font-size:21px}
   .gbody .btn{min-height:42px;padding:8px 18px;font-size:15px}
-  .gbody .leader{font-size:14px;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.45;padding-bottom:1px}
+  /* up to two lines; a plain block (not -webkit-box line-clamp), which Safari would squash and cut through */
+  .gbody .leader{font-size:14px;white-space:normal;display:block;line-height:1.45;max-height:calc(2.9em + 2px);overflow:hidden;padding-bottom:1px}
 }
 /* narrow card (phone on its side): keep the score line on one row */
 @container card (max-width:300px) and (max-height:289px){
@@ -248,6 +249,7 @@ input[type="date"]{min-height:52px}
   .gtop svg{width:26px;height:26px}
   .play{padding:6px 12px;font-size:14px}
   .gbody{display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:clamp(10px,3.6cqh,22px);padding:clamp(14px,4cqh,24px) 18px}
+  .gbody > *{flex-shrink:0} /* nothing gets squashed: only the gaps give way */
   .mine{flex-wrap:wrap;gap:8px}
   .mine .big{font-size:clamp(38px,13cqh,64px)}
   .mine .of{font-size:15px}
