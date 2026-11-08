@@ -261,7 +261,39 @@ create policy messages_delete_own on messages for delete to authenticated using 
 grant select, insert, delete on messages to authenticated;
 alter table messages replica identity full;
 
+-- ---------- chat reactions ----------
+-- Emoji reactions on day-chat items. item_id is a message id, or "score:<player id>" for that person's score comment.
+create table if not exists reactions (
+  game_id text not null references games on delete cascade,
+  play_date date not null,
+  item_id text not null,
+  player_id uuid not null references players on delete cascade,
+  emoji text not null check (char_length(emoji) between 1 and 16),
+  created_at timestamptz not null default now(),
+  primary key (game_id, play_date, item_id, player_id, emoji)
+);
+alter table reactions enable row level security;
+drop policy if exists reactions_read on reactions;
+create policy reactions_read on reactions for select to authenticated using (my_player_id() is not null);
+drop policy if exists reactions_write_own on reactions;
+create policy reactions_write_own on reactions for insert to authenticated with check (player_id = my_player_id());
+drop policy if exists reactions_delete_own on reactions;
+create policy reactions_delete_own on reactions for delete to authenticated using (player_id = my_player_id() or i_am_admin());
+grant select, insert, delete on reactions to authenticated;
+alter table reactions replica identity full;
+
+-- A deleted message takes its reactions with it.
+create or replace function drop_message_reactions() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from reactions where game_id = old.game_id and play_date = old.play_date and item_id = old.id::text;
+  return old;
+end $$;
+drop trigger if exists messages_drop_reactions on messages;
+create trigger messages_drop_reactions after delete on messages for each row execute function drop_message_reactions();
+
 -- ---------- live updates ----------
+do $$ begin alter publication supabase_realtime add table reactions; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table messages; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table scores; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table players; exception when duplicate_object then null; end $$;

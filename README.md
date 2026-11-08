@@ -13,6 +13,7 @@ It works on phones (add it to your home screen and it opens like an app) and in 
   - A card for each game with a Play link, your score and place, and who has played. Once you've played, or the day has a winner, the link reads **Open** and stays on both sides of the card, so you can go back into the game and look at your answers.
   - Once everyone has played a game, its card turns gold and shows **who won the day**, with their face and a podium of everyone's score. Tap **Today's result** in the corner to flip it over to your own score, and **Winner** to flip it back. It goes back to the winner whenever you leave the tab.
   - **Lock in my score** opens a sheet. Paste the share text and the score fills in. Confetti for a new personal best or for taking the lead.
+- **Day chat reactions:** in a game's chat, tap **React** under any message or score comment to add an emoji (👍 ❤️ 😂 😮 😢 🔥 🎉 👏). Reactions show as chips under the bubble with a count; tap a chip to add yours or take it back. You get a pop-up when someone reacts to something you said. (Run [`supabase/schema.sql`](supabase/schema.sql) again once to add the reactions table.)
 - **Yesterday's winners:** a button that reveals who took the crown in each game yesterday.
 - **Leaderboards:** opens on **All time**, with **Month** (last 30 days) and **Week** (last 7 days) next to it:
   - **All games:** a race where winning any game on any day is worth one point, and every game counts the same. Bars are split by game, and **Replay the race** plays it back day by day. A tie shares the point.

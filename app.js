@@ -21,6 +21,7 @@ let games = [], allGames = [];
 let players = {};             // id -> player
 let scores = new Map();       // "player|game|date" -> row
 let msgs = new Map();         // chat message id -> row (the last two weeks)
+let reacts = new Map();       // "game|date|item|player|emoji" -> reaction row (the last two weeks)
 let pendingShare = null;
 let pendingComment = null;    // "game|date|player" or "game|date|<message id>" from a tapped chat notification
 let adminDirty = false;
@@ -826,7 +827,7 @@ function chatItem(id) {
 function openComments(gid, date, focus) {
   const g = gById(gid); if (!g) return;
   const fresh = !st.chat || st.chat.gid !== gid || st.chat.date !== date || $("#cSheet").hidden;
-  st.chat = { gid, date, focus: focus ? (msgs.has(focus) || focus.startsWith("score:") ? focus : `score:${focus}`) : null, reply: fresh ? null : st.chat.reply };
+  st.chat = { gid, date, focus: focus ? (msgs.has(focus) || focus.startsWith("score:") ? focus : `score:${focus}`) : null, reply: fresh ? null : st.chat.reply, pick: null };
   $("#cSheet .sheet").style.setProperty("--gc", gc(g.id));
   $("#cTitle").textContent = `${g.name} chat`;
   $("#cDate").textContent = date === todayStr() ? `Today · ${nice(date, { month: "long", day: "numeric" })}` : nice(date);
@@ -854,13 +855,63 @@ function renderChat() {
       <div class="bwrap">
         ${cont || mine ? "" : `<div class="bname">${esc(nameOf(e.uid))}</div>`}
         <div class="bb">${quote}${tagS}<p>${esc(e.body)}</p></div>
-        <div class="bmeta"><span>${esc(timeOf(e.at))}</span><button type="button" class="blink" data-reply="${esc(e.id)}">Reply</button>${mine && e.msg ? `<button type="button" class="blink" data-delmsg="${esc(e.id)}">Delete</button>` : ""}</div>
+        ${reactRow(e.id, mine)}
+        <div class="bmeta"><span>${esc(timeOf(e.at))}</span><button type="button" class="blink" data-react="${esc(e.id)}" aria-expanded="${st.chat.pick === e.id}">React</button><button type="button" class="blink" data-reply="${esc(e.id)}">Reply</button>${mine && e.msg ? `<button type="button" class="blink" data-delmsg="${esc(e.id)}">Delete</button>` : ""}</div>
       </div>
     </div>`;
   }).join("") : `<div class="yempty">No chat on ${esc(g.name)} yet. Say something! 🦗</div>`;
   const r = chatItem(reply);
   $("#replyBar").hidden = !r;
   if (r) $("#replyTo").innerHTML = `Replying to <b>${esc(r.uid === me.id ? "yourself" : nameOf(r.uid))}</b>: ${esc(r.body.length > 60 ? r.body.slice(0, 59) + "…" : r.body)}`;
+}
+/* ---------- chat reactions ---------- */
+const REACTS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎉", "👏"];
+const rKey = (r) => `${r.game_id}|${r.play_date}|${r.item_id}|${r.player_id}|${r.emoji}`;
+// The reactions on one chat item, grouped by emoji in first-reacted order: [{emoji, who: [player ids]}].
+function reactsOn(gid, date, item) {
+  const by = new Map();
+  for (const r of [...reacts.values()].sort((a, b) => (a.created_at < b.created_at ? -1 : 1)))
+    if (r.game_id === gid && r.play_date === date && r.item_id === item) {
+      if (!by.has(r.emoji)) by.set(r.emoji, []);
+      by.get(r.emoji).push(r.player_id);
+    }
+  return [...by].map(([emoji, who]) => ({ emoji, who }));
+}
+function reactRow(id, mine) {
+  const { gid, date, pick } = st.chat;
+  const list = reactsOn(gid, date, id);
+  const chips = list.map((x) => {
+    const names = x.who.map((u) => (u === me.id ? "You" : nameOf(u))).join(", ");
+    return `<button type="button" class="rchip${x.who.includes(me.id) ? " mine" : ""}" data-rx="${esc(id)}" data-emoji="${esc(x.emoji)}" title="${esc(names)}" aria-label="${esc(`${x.emoji} from ${names}`)}" aria-pressed="${x.who.includes(me.id)}">${x.emoji}${x.who.length > 1 ? ` <b>${x.who.length}</b>` : ""}</button>`;
+  }).join("");
+  const picker = pick === id ? `<div class="rpick" role="group" aria-label="Pick a reaction">${REACTS.map((em) => `<button type="button" data-rx="${esc(id)}" data-emoji="${em}" aria-pressed="${list.some((x) => x.emoji === em && x.who.includes(me.id))}">${em}</button>`).join("")}</div>` : "";
+  return chips || picker ? `<div class="rrow${mine ? " me" : ""}">${chips}</div>${picker}` : "";
+}
+// Tap an emoji to add your reaction, tap it again to take it back.
+async function toggleReact(item, emoji) {
+  if (!st.chat || !REACTS.includes(emoji) && !reactsOn(st.chat.gid, st.chat.date, item).some((x) => x.emoji === emoji)) return;
+  const row = { game_id: st.chat.gid, play_date: st.chat.date, item_id: item, player_id: me.id, emoji };
+  const k = rKey(row), had = reacts.get(k);
+  st.chat.pick = null;
+  if (had) reacts.delete(k); else reacts.set(k, { ...row, created_at: new Date().toISOString() });
+  renderChat();
+  const q = had
+    ? sb.from("reactions").delete().match(row)
+    : sb.from("reactions").upsert(row, { onConflict: "game_id,play_date,item_id,player_id,emoji", ignoreDuplicates: true });
+  const { error } = await q;
+  if (error) {
+    if (had) reacts.set(k, had); else reacts.delete(k);
+    if (st.chat && !$("#cSheet").hidden) renderChat();
+    toast(errText(error, "Couldn't save that reaction. Check your connection."));
+  }
+}
+// Someone else reacted: tell the person whose message it was.
+function announceReact(r) {
+  const it = r.item_id.startsWith("score:") ? { uid: r.item_id.slice(6), body: scores.get(`${r.item_id.slice(6)}|${r.game_id}|${r.play_date}`)?.comment || "" } : msgs.get(r.item_id) && { uid: msgs.get(r.item_id).player_id, body: msgs.get(r.item_id).body };
+  if (!it || it.uid !== me.id) return;
+  const g = gById(r.game_id); if (!g) return;
+  const open = st.chat && !$("#cSheet").hidden && st.chat.gid === r.game_id && st.chat.date === r.play_date;
+  if (!open) toast(`${r.emoji} ${nameOf(r.player_id)} reacted to “${clip(it.body, 50)}”`, true);
 }
 function chatGrow() { const t = $("#chatText"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; $("#chatSend").disabled = !t.value.trim(); }
 async function sendChat() {
@@ -879,7 +930,9 @@ async function deleteChat(id) {
   if (!confirm("Delete this message?")) return;
   const { error } = await sb.from("messages").delete().eq("id", id);
   if (error) { toast(errText(error, "Couldn't delete that.")); return; }
-  msgs.delete(id); renderChat(); renderToday();
+  msgs.delete(id);
+  for (const [k, r] of reacts) if (r.item_id === id) reacts.delete(k);
+  renderChat(); renderToday();
 }
 // A chat message arrived from someone else.
 function announceMsg(m) {
@@ -1056,6 +1109,7 @@ async function loadAll() {
     sb.from("games").select("*").order("sort").then((r) => { if (r.error) throw r.error; return r.data; }),
     loadPlayers(),
     sb.from("messages").select("*").gte("play_date", daysAgo(14)).order("created_at").then((r) => { if (!r.error) msgs = new Map(r.data.map((m) => [m.id, m])); }),
+    sb.from("reactions").select("*").gte("play_date", daysAgo(14)).then((r) => { if (!r.error) reacts = new Map(r.data.map((x) => [rKey(x), x])); }),
     fetchAll("scores", "player_id,game_id,play_date,score,details,comment,comment_at,created_at").then((s) => { scores = new Map(s.map((r) => [key(r), tidyKrill(r)])); }),
   ]);
   allGames = g; games = g.filter((x) => x.active);
@@ -1085,6 +1139,11 @@ function subscribe() {
       else { const had = msgs.has(p.new.id); msgs.set(p.new.id, p.new); if (!had && me && p.new.player_id !== me.id) announceMsg(p.new); }
       if (st.chat && !$("#cSheet").hidden) renderChat();
       renderToday();
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "reactions" }, (p) => {
+      if (p.eventType === "DELETE") { if (p.old && p.old.item_id) reacts.delete(rKey(p.old)); }
+      else { const k = rKey(p.new), had = reacts.has(k); reacts.set(k, p.new); if (!had && me && p.new.player_id !== me.id) announceReact(p.new); }
+      if (st.chat && !$("#cSheet").hidden) renderChat();
     })
     .subscribe();
 }
@@ -1220,6 +1279,10 @@ function wire() {
     if (chip) { st.post = chip.dataset.g; renderPostGame(); fillComment(); prefill(); return; }
     const talk = t.closest("[data-comments]");
     if (talk) { openComments(talk.dataset.comments, todayStr()); return; }
+    const rx = t.closest("[data-rx]");
+    if (rx) { toggleReact(rx.dataset.rx, rx.dataset.emoji); return; }
+    const pk = t.closest("[data-react]");
+    if (pk) { st.chat.pick = st.chat.pick === pk.dataset.react ? null : pk.dataset.react; renderChat(); const p = $("#cBody .rpick button"); if (p) p.focus({ preventScroll: true }); return; }
     const rp = t.closest("[data-reply]");
     if (rp) { st.chat.reply = rp.dataset.reply; renderChat(); $("#chatText").focus(); return; }
     const dm = t.closest("[data-delmsg]");

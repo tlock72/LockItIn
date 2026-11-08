@@ -669,6 +669,19 @@ textarea.comment{min-height:64px}
 .replybar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .replybar b{color:var(--ink)}
 #replyX{font:inherit;font-size:20px;line-height:1;background:var(--soft);border:0;border-radius:999px;width:28px;height:28px;cursor:pointer;color:var(--ink);flex:none}
+/* Chat reactions: emoji chips under a bubble, and the picker that opens from React */
+.rrow{display:flex;flex-wrap:wrap;gap:4px;margin:4px 6px 0}
+.rrow:empty{display:none}
+.rchip{font:inherit;font-size:14px;line-height:1;display:inline-flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 8px;cursor:pointer;color:var(--ink)}
+.rchip b{font-size:12px;font-weight:800;color:var(--muted)}
+.rchip.mine{border-color:var(--gc);background:color-mix(in srgb,var(--gc) 14%,var(--surface))}
+.rchip.mine b{color:var(--gc)}
+.rpick{display:flex;flex-wrap:wrap;gap:2px;margin:6px 4px 0;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.12);align-self:flex-start}
+.bub.me .rpick{align-self:flex-end}
+.rpick button{font-size:20px;line-height:1;background:none;border:0;border-radius:999px;width:36px;height:36px;cursor:pointer;padding:0}
+.rpick button:hover,.rpick button:focus-visible{background:var(--soft)}
+.rpick button[aria-pressed="true"]{background:color-mix(in srgb,var(--gc) 18%,transparent)}
+@media (prefers-reduced-motion:no-preference){.rpick{animation:cpop .25s cubic-bezier(.2,1.4,.4,1) both}}
 @media (prefers-reduced-motion:no-preference){.bub.focus .bb{animation:cpop .45s cubic-bezier(.2,1.4,.4,1) both}}
 @keyframes cpop{from{transform:scale(.92)}to{transform:none}}
 
