@@ -446,8 +446,22 @@ td.spark svg{display:block}
   .gtop{gap:6px}
   .gtop-r{gap:4px}
 }
-@container card (max-width:330px){
-  .gtop .play,.gtop .talk{padding:4px 8px}
+/* Narrower still: the game name always gets its full width, so "Open" shrinks to ↗
+   and the flip button to its ↻ circle (both keep their aria-labels). */
+@container card (max-width:400px){
+  .gtop .play:has(.pl){display:inline-grid;place-items:center;width:30px;height:30px;padding:0;font-size:15px}
+  .gtop .play .pl{display:none}
+  .flip{padding:4px}
+  .flip .sm{display:none}
+  .flip .fi{width:22px;height:22px;font-size:15px}
+}
+@container card (max-width:340px){
+  .gtop{padding-left:14px;padding-right:12px}
+  .gtop .talk{padding:4px 8px}
+}
+@container card (max-width:300px){
+  .gtop h3{font-size:19px;gap:6px}
+  .gtop svg{width:20px;height:20px}
 }
 @media (prefers-reduced-motion:no-preference){.flip .fi{transition:transform .25s}}
 .gcard.showwin{border-color:color-mix(in srgb,var(--gold) 60%,var(--line));box-shadow:0 0 0 2px color-mix(in srgb,var(--gold) 45%,transparent),var(--shadow)}

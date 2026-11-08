@@ -430,7 +430,7 @@ function renderToday() {
     // The game link stays on both sides of the card. Once you've played (or the day is decided) it reads "Open",
     // so people can still pop into the game to look back at their answers.
     const open = !!mine || won;
-    const link = g.url ? `<a class="play" href="${esc(g.url)}" target="_blank" rel="noopener" aria-label="${open ? `Open ${esc(g.name)} to see your answers` : `Play ${esc(g.name)}`}">${open ? "Open" : "Play"} ↗</a>` : "";
+    const link = g.url ? `<a class="play" href="${esc(g.url)}" target="_blank" rel="noopener" aria-label="${open ? `Open ${esc(g.name)} to see your answers` : `Play ${esc(g.name)}`}">${open ? `<span class="pl">Open </span>↗` : "Play ↗"}</a>` : "";
     const flip = won
       ? `<button class="flip" type="button" data-flip="${esc(g.id)}" aria-label="${showWin ? "Show today's result" : "Show the day's winner"}">${showWin ? `<span class="lg">Today's result</span><span class="sm">Result</span>` : `<span class="lg">🏆 Winner</span><span class="sm">🏆</span>`}<span class="fi" aria-hidden="true">↻</span></button>`
       : "";
