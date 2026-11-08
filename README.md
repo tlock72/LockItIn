@@ -10,7 +10,7 @@ It works on phones (add it to your home screen and it opens like an app) and in 
 
 - **One-time login:** open the link, tap your name (or add yourself), done. The device remembers you. No passwords or codes. One person can be logged in on a phone and a computer at the same time.
 - **Today** (the app always opens here; tap the LockItIn logo to come back):
-  - A card for each game with a Play link, your score and place, and who has played.
+  - A card for each game with a Play link, your score and place, and who has played. Once you've played, or the day has a winner, the link reads **Open** and stays on both sides of the card, so you can go back into the game and look at your answers.
   - Once everyone has played a game, its card turns gold and shows **who won the day**, with their face and a podium of everyone's score. Tap **Today's result** in the corner to flip it over to your own score, and **Winner** to flip it back. It goes back to the winner whenever you leave the tab.
   - **Lock in my score** opens a sheet. Paste the share text and the score fills in. Confetti for a new personal best or for taking the lead.
 - **Yesterday's winners:** a button that reveals who took the crown in each game yesterday.

@@ -434,6 +434,21 @@ td.spark svg{display:block}
   color:#3B2A00;background:var(--gold);padding:4px 6px 4px 10px;border-radius:999px;box-shadow:0 2px 0 rgba(0,0,0,.15)}
 .flip .fi{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.55);font-size:13px;line-height:1}
 .flip:hover .fi{transform:rotate(-120deg)}
+/* The header carries chat, the game link and the flip button. On narrow cards the flip label shortens
+   and a long game name trims with "…", so nothing gets pushed off the edge. */
+.flip .sm{display:none}
+.gcard{grid-template-columns:minmax(0,1fr)}
+.gtop h3 .gn{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.gtop-r{flex:none}
+@container (max-width:420px){
+  .flip .lg{display:none}
+  .flip .sm{display:inline}
+  .gtop{gap:6px}
+  .gtop-r{gap:4px}
+}
+@container (max-width:330px){
+  .gtop .play,.gtop .talk{padding:4px 8px}
+}
 @media (prefers-reduced-motion:no-preference){.flip .fi{transition:transform .25s}}
 .gcard.showwin{border-color:color-mix(in srgb,var(--gold) 60%,var(--line));box-shadow:0 0 0 2px color-mix(in srgb,var(--gold) 45%,transparent),var(--shadow)}
 .gcard.showwin .gtop{background:linear-gradient(100deg,var(--gc) 0%,var(--gc) 42%,color-mix(in srgb,var(--gold) 85%,var(--gc)) 100%)}

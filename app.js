@@ -422,9 +422,12 @@ function renderToday() {
     const mine = list.find((e) => e.uid === me.id);
     const won = winners.length > 0;                 // the day is settled: show the winner first
     const showWin = won && !st.flipped.has(g.id);
-    const link = g.url ? `<a class="play" href="${esc(g.url)}" target="_blank" rel="noopener">Play ↗</a>` : "";
+    // The game link stays on both sides of the card. Once you've played (or the day is decided) it reads "Open",
+    // so people can still pop into the game to look back at their answers.
+    const open = !!mine || won;
+    const link = g.url ? `<a class="play" href="${esc(g.url)}" target="_blank" rel="noopener" aria-label="${open ? `Open ${esc(g.name)} to see your answers` : `Play ${esc(g.name)}`}">${open ? "Open" : "Play"} ↗</a>` : "";
     const flip = won
-      ? `<button class="flip" type="button" data-flip="${esc(g.id)}" aria-label="${showWin ? "Show today's result" : "Show the day's winner"}">${showWin ? "Today's result" : "🏆 Winner"}<span class="fi" aria-hidden="true">↻</span></button>`
+      ? `<button class="flip" type="button" data-flip="${esc(g.id)}" aria-label="${showWin ? "Show today's result" : "Show the day's winner"}">${showWin ? `<span class="lg">Today's result</span><span class="sm">Result</span>` : `<span class="lg">🏆 Winner</span><span class="sm">🏆</span>`}<span class="fi" aria-hidden="true">↻</span></button>`
       : "";
     const nc = chatItems(g.id, today).length;
     const talk = `<button class="talk${nc ? "" : " none"}" type="button" data-comments="${esc(g.id)}" aria-label="Today's ${esc(g.name)} chat${nc ? `, ${nc} ${nc === 1 ? "message" : "messages"}` : ""}">💬${nc ? ` ${nc}` : ""}</button>`;
@@ -435,7 +438,7 @@ function renderToday() {
         ? `<span class="champav crowned">${winners.slice(0, 3).map((u) => av(u, "l")).join("")}</span>`
         : `<span class="champav crowned">${av(winners[0], "l")}</span>`;
       return `<article class="${cls}" style="--gc:${gc(g.id)}">
-        <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3><span class="gtop-r">${talk}${flip}</span></div>
+        <div class="gtop"><h3>${icon(g.id)}<span class="gn">${esc(g.name)}</span></h3><span class="gtop-r">${talk}${link}${flip}</span></div>
         <div class="gwin">
           <div class="champ">${champ}<div class="ctext"><div class="cflag">${many ? "🤝 It's a draw" : "🏆 Won the day"}</div><div class="cname">${esc(listNames(winners))}</div><div class="cscore">${fmt(top.s)}${g.max_score ? `<span class="of"> / ${fmt(g.max_score)}</span>` : ""}</div></div></div>
           ${dayBoard(g, list)}
@@ -443,7 +446,7 @@ function renderToday() {
       </article>`;
     }
     return `<article class="${cls}" style="--gc:${gc(g.id)}">
-      <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3><span class="gtop-r">${talk}${link}${flip}</span></div>
+      <div class="gtop"><h3>${icon(g.id)}<span class="gn">${esc(g.name)}</span></h3><span class="gtop-r">${talk}${link}${flip}</span></div>
       <div class="gbody">
         ${mine
           ? `<div class="mine"><span class="big">${fmt(mine.s)}</span>${g.max_score ? `<span class="of">/ ${fmt(g.max_score)}</span>` : ""}<span class="pill on">${outcome(list, me.id) === "draw" ? "🤝 =" : outcome(list, me.id) === "win" ? "👑 #" : "#"}${mine.rank} of ${list.length}</span></div>`
