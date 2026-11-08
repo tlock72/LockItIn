@@ -230,14 +230,21 @@
   </div>
 </div>
 
-<!-- Today's comments for one game -->
+<!-- Today's chat for one game -->
 <div class="sheet-wrap" id="cSheet" hidden>
-  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cTitle">
+  <div class="sheet chat" role="dialog" aria-modal="true" aria-labelledby="cTitle">
     <div class="sheet-head">
-      <div><h2 id="cTitle">Comments</h2><p id="cDate"></p></div>
+      <div><h2 id="cTitle">Chat</h2><p id="cDate"></p></div>
       <button class="x" type="button" data-close aria-label="Close">×</button>
     </div>
-    <div class="sheet-body stack" id="cBody"></div>
+    <div class="sheet-body chatlog" id="cBody" aria-live="polite"></div>
+    <form class="chatbar" id="chatForm">
+      <div class="replybar" id="replyBar" hidden><span id="replyTo"></span><button type="button" id="replyX" aria-label="Cancel reply">×</button></div>
+      <div class="chatrow">
+        <textarea id="chatText" rows="1" maxlength="500" placeholder="Say something…" aria-label="Message"></textarea>
+        <button class="btn" id="chatSend" type="submit" disabled aria-label="Send">Send</button>
+      </div>
+    </form>
   </div>
 </div>
 

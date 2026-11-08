@@ -562,12 +562,35 @@ td.spark svg{display:block}
 .talk:hover{background:rgba(255,255,255,.32)}
 .label .opt{color:var(--muted);font-weight:600}
 textarea.comment{min-height:64px}
-.cmt{display:flex;gap:10px;align-items:flex-start}
-.cmt-b{flex:1;min-width:0;background:var(--soft);border-radius:4px 16px 16px 16px;padding:9px 13px}
-.cmt.me .cmt-b{background:color-mix(in srgb,var(--gc) 14%,transparent)}
-.cmt.focus .cmt-b{box-shadow:0 0 0 2px var(--gc)}
-.cmt-h{display:flex;justify-content:space-between;gap:10px;font-size:14px}
-.cmt-h span{color:var(--muted);font-weight:700;white-space:nowrap}
-.cmt p{margin:3px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-weight:600}
-@media (prefers-reduced-motion:no-preference){.cmt.focus .cmt-b{animation:cpop .45s cubic-bezier(.2,1.4,.4,1) both}}
+.talk.none{padding:4px 9px}
+/* Day chat */
+.sheet.chat{display:flex;flex-direction:column;height:min(720px,85dvh)}
+.chatlog{display:flex;flex-direction:column;gap:2px;padding:14px 14px 10px;flex:1}
+.bub{display:flex;gap:8px;align-items:flex-end;margin-top:10px;max-width:88%}
+.bub.cont{margin-top:2px}
+.bub.me{align-self:flex-end;flex-direction:row-reverse}
+.bav{width:30px;flex:none;display:flex;margin-bottom:22px}
+.bwrap{min-width:0;display:flex;flex-direction:column}
+.bub.me .bwrap{align-items:flex-end}
+.bname{font-size:13px;font-weight:800;color:var(--muted);margin:0 0 2px 10px}
+.bb{background:var(--soft);border-radius:18px 18px 18px 6px;padding:8px 13px;min-width:0;max-width:100%}
+.bub.me .bb{background:var(--gc);color:#fff;border-radius:18px 18px 6px 18px}
+.bub.focus .bb{box-shadow:0 0 0 3px color-mix(in srgb,var(--gc) 45%,transparent)}
+.bb p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-weight:600;line-height:1.35}
+.stag{display:inline-block;font-size:12px;font-weight:800;padding:1px 8px;border-radius:999px;margin:1px 0 4px;background:color-mix(in srgb,var(--gc) 16%,transparent);color:var(--gc)}
+.bub.me .stag{background:rgba(255,255,255,.24);color:#fff}
+.quote{font-size:13px;border-left:3px solid var(--gc);padding:2px 0 2px 8px;margin:2px 0 6px;opacity:.85;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.bub.me .quote{border-left-color:rgba(255,255,255,.7)}
+.bmeta{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted);font-weight:700;margin:2px 10px 0}
+.blink{font:inherit;background:none;border:0;padding:2px 0;color:var(--gc);font-weight:800;cursor:pointer}
+.chatbar{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px))}
+.chatrow{display:flex;gap:8px;align-items:flex-end}
+.chatrow textarea{min-height:44px;height:44px;max-height:120px;resize:none;border-radius:22px;padding:10px 16px;line-height:1.3;overflow-y:auto;scrollbar-width:none}
+.chatrow .btn{width:auto;min-height:44px;padding:8px 18px;background:var(--gc);flex:none}
+.chatrow .btn:disabled{opacity:.45}
+.replybar{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:0 4px 8px;min-width:0}
+.replybar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.replybar b{color:var(--ink)}
+#replyX{font:inherit;font-size:20px;line-height:1;background:var(--soft);border:0;border-radius:999px;width:28px;height:28px;cursor:pointer;color:var(--ink);flex:none}
+@media (prefers-reduced-motion:no-preference){.bub.focus .bb{animation:cpop .45s cubic-bezier(.2,1.4,.4,1) both}}
 @keyframes cpop{from{transform:scale(.92)}to{transform:none}}

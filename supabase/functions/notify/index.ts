@@ -120,6 +120,30 @@ async function onScore(me: string, gameId: string, date: string) {
   return { sent };
 }
 
+// A chat message: tell everyone else. Whoever it replies to gets "Mum replied to you".
+async function onMessage(me: string, id: string) {
+  const { data: m } = await db.from("messages").select("id, game_id, play_date, player_id, body, reply_to").eq("id", id).maybeSingle();
+  if (!m || m.player_id !== me || !(await once(`msg|${m.id}`))) return { sent: 0 };
+  const [game, people, subs, target] = await Promise.all([
+    db.from("games").select("name").eq("id", m.game_id).maybeSingle(),
+    db.from("players").select("id, name"),
+    db.from("push_subs").select("endpoint, player_id, sub"),
+    m.reply_to && !String(m.reply_to).startsWith("score:")
+      ? db.from("messages").select("player_id").eq("id", m.reply_to).maybeSingle()
+      : Promise.resolve({ data: m.reply_to ? { player_id: String(m.reply_to).slice(6) } : null }),
+  ]);
+  const fam = people.data || [], all = ((subs.data || []) as Sub[]).filter((s) => s.player_id !== me);
+  const nameOf = (pid: string) => fam.find((p) => p.id === pid)?.name || "Someone";
+  const to = (target.data as { player_id?: string } | null)?.player_id;
+  const body = m.body.length > 140 ? m.body.slice(0, 139) + "…" : m.body;
+  const base = { body, tag: `chat-${m.game_id}-${m.play_date}`, url: `./?comment=${encodeURIComponent(`${m.game_id}|${m.play_date}|${m.id}`)}` };
+  const gname = game.data?.name || "game";
+  let sent = 0;
+  if (to && to !== me) sent += await send(all.filter((s) => s.player_id === to), { ...base, title: `↩️ ${nameOf(me)} replied to you in ${gname}` });
+  sent += await send(all.filter((s) => s.player_id !== to || to === me), { ...base, title: `💬 ${nameOf(me)} in the ${gname} chat` });
+  return { sent };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -140,6 +164,9 @@ Deno.serve(async (req) => {
     }
     if (body.type === "score" && body.game_id && /^\d{4}-\d{2}-\d{2}$/.test(String(body.play_date))) {
       return json(await onScore(me as string, String(body.game_id), String(body.play_date)));
+    }
+    if (body.type === "message" && /^[0-9a-f-]{36}$/.test(String(body.id))) {
+      return json(await onMessage(me as string, String(body.id)));
     }
     return json({ error: "Unknown request" }, 400);
   } catch (e) {

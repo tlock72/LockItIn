@@ -51,6 +51,7 @@ alter table scores add column if not exists details jsonb;
 alter table scores add column if not exists comment text;
 alter table scores drop constraint if exists scores_comment_len;
 alter table scores add constraint scores_comment_len check (comment is null or char_length(comment) <= 280);
+alter table scores add column if not exists comment_at timestamptz;  -- when the comment was last written (orders it in the day chat)
 
 -- ---------- move older setups forward (invite codes and PINs are gone) ----------
 do $$ begin
@@ -220,7 +221,31 @@ $$;
 revoke all on function save_push(jsonb), drop_push(text) from public, anon;
 grant execute on function save_push(jsonb), drop_push(text) to authenticated;
 
+-- ---------- day chat ----------
+-- Each game has a running chat for each day. A score's own comment (scores.comment) shows in it too.
+-- reply_to: another message's id, or "score:<player id>" to reply to that person's score comment.
+create table if not exists messages (
+  id uuid primary key default gen_random_uuid(),
+  game_id text not null references games on delete cascade,
+  play_date date not null,
+  player_id uuid not null references players on delete cascade,
+  body text not null check (char_length(btrim(body)) between 1 and 500),
+  reply_to text,
+  created_at timestamptz not null default now()
+);
+create index if not exists messages_day on messages (game_id, play_date);
+alter table messages enable row level security;
+drop policy if exists messages_read on messages;
+create policy messages_read on messages for select to authenticated using (my_player_id() is not null);
+drop policy if exists messages_write_own on messages;
+create policy messages_write_own on messages for insert to authenticated with check (player_id = my_player_id());
+drop policy if exists messages_delete_own on messages;
+create policy messages_delete_own on messages for delete to authenticated using (player_id = my_player_id() or i_am_admin());
+grant select, insert, delete on messages to authenticated;
+alter table messages replica identity full;
+
 -- ---------- live updates ----------
+do $$ begin alter publication supabase_realtime add table messages; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table scores; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table players; exception when duplicate_object then null; end $$;
 

@@ -17,8 +17,9 @@ let me = null;                // {id, name, color, avatar_url, is_admin}
 let games = [], allGames = [];
 let players = {};             // id -> player
 let scores = new Map();       // "player|game|date" -> row
+let msgs = new Map();         // chat message id -> row (the last two weeks)
 let pendingShare = null;
-let pendingComment = null;    // "game|date|player" from a tapped comment notification
+let pendingComment = null;    // "game|date|player" or "game|date|<message id>" from a tapped chat notification
 let adminDirty = false;
 
 // The app always opens on Today, and the leaderboards always open on All time.
@@ -395,8 +396,8 @@ function renderToday() {
     const flip = won
       ? `<button class="flip" type="button" data-flip="${esc(g.id)}" aria-label="${showWin ? "Show today's result" : "Show the day's winner"}">${showWin ? "Today's result" : "🏆 Winner"}<span class="fi" aria-hidden="true">↻</span></button>`
       : "";
-    const nc = rowsFor(g.id, today).filter((r) => r.play_date === today && r.comment).length;
-    const talk = nc ? `<button class="talk" type="button" data-comments="${esc(g.id)}" aria-label="${nc} ${nc === 1 ? "comment" : "comments"} today">💬 ${nc}</button>` : "";
+    const nc = chatItems(g.id, today).length;
+    const talk = `<button class="talk${nc ? "" : " none"}" type="button" data-comments="${esc(g.id)}" aria-label="Today's ${esc(g.name)} chat${nc ? `, ${nc} ${nc === 1 ? "message" : "messages"}` : ""}">💬${nc ? ` ${nc}` : ""}</button>`;
     const cls = `gcard${won ? " decided" : ""}${showWin ? " showwin" : ""}${st.flipAnim === g.id ? " flipping" : ""}`;
     if (showWin) {
       const top = list[0], many = winners.length > 1;
@@ -729,32 +730,105 @@ function renderPostGame() {
   $("#postTitle").textContent = `Lock in your ${g.name} score`;
   $("#postChips").innerHTML = games.map((x) => `<button class="chip" type="button" style="--gc:${gc(x.id)}" data-g="${esc(x.id)}" aria-pressed="${x.id === g.id}">${esc(x.name)}</button>`).join("");
 }
-// Everyone's comments on one game for one day, best score first. focus = the comment a notification pointed at.
+/* ---------- day chat ---------- */
+// Each game has a running chat for each day: score comments (from Lock in) plus chat messages, oldest first.
+// Item ids: a message's own id, or "score:<player id>" for a score comment. Replies point at either.
+function chatItems(gid, date) {
+  const out = [];
+  for (const r of rowsFor(gid, date)) if (r.play_date === date && r.comment)
+    out.push({ id: `score:${r.player_id}`, uid: r.player_id, body: r.comment, at: r.comment_at || r.created_at || "", score: Number(r.score) });
+  for (const m of msgs.values()) if (m.game_id === gid && m.play_date === date)
+    out.push({ id: m.id, uid: m.player_id, body: m.body, at: m.created_at || "", reply: m.reply_to, msg: true });
+  return out.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
+}
+const timeOf = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
+function chatItem(id) {
+  if (!id) return null;
+  if (id.startsWith("score:")) {
+    const r = st.chat && scores.get(`${id.slice(6)}|${st.chat.gid}|${st.chat.date}`);
+    return r && r.comment ? { id, uid: r.player_id, body: r.comment } : null;
+  }
+  const m = msgs.get(id);
+  return m ? { id, uid: m.player_id, body: m.body } : null;
+}
+// focus: a message id, "score:<player>" or just a player id (older notifications) to highlight.
 function openComments(gid, date, focus) {
   const g = gById(gid); if (!g) return;
-  const list = rankDay(rowsFor(gid, date).filter((r) => r.play_date === date).map((r) => ({ uid: r.player_id, s: Number(r.score), c: r.comment })), g);
-  const said = list.filter((e) => e.c);
+  const fresh = !st.chat || st.chat.gid !== gid || st.chat.date !== date || $("#cSheet").hidden;
+  st.chat = { gid, date, focus: focus ? (msgs.has(focus) || focus.startsWith("score:") ? focus : `score:${focus}`) : null, reply: fresh ? null : st.chat.reply };
   $("#cSheet .sheet").style.setProperty("--gc", gc(g.id));
-  $("#cTitle").textContent = `${g.name} comments`;
+  $("#cTitle").textContent = `${g.name} chat`;
   $("#cDate").textContent = date === todayStr() ? `Today · ${nice(date, { month: "long", day: "numeric" })}` : nice(date);
-  const mineDone = list.some((e) => e.uid === me.id && e.c);
-  $("#cBody").innerHTML = (said.length
-    ? said.map((e) => `<div class="cmt${e.uid === focus ? " focus" : ""}${e.uid === me.id ? " me" : ""}" data-uid="${esc(e.uid)}">
-        ${av(e.uid, "m")}<div class="cmt-b"><div class="cmt-h"><b>${esc(nameOf(e.uid))}</b><span>${MEDAL[e.rank] || "#" + e.rank} ${fmt(e.s)}</span></div><p>${esc(e.c)}</p></div></div>`).join("")
-    : `<div class="yempty">No comments on ${esc(g.name)} yet. 🦗</div>`)
-    + (date === todayStr() && list.some((e) => e.uid === me.id)
-      ? `<button class="btn ghost" type="button" data-addcomment="${esc(g.id)}">${mineDone ? "Edit my comment" : "Add a comment 💬"}</button>` : "");
-  openSheet("#cSheet");
-  const f = focus && $(`#cBody .cmt.focus`); if (f) setTimeout(() => f.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
+  renderChat();
+  if ($("#cSheet").hidden) openSheet("#cSheet");
+  if (fresh) $("#chatText").value = "";
+  chatGrow();
+  const f = $("#cBody .bub.focus");
+  setTimeout(() => (f ? f.scrollIntoView({ block: "center", behavior: "smooth" }) : chatBottom()), 60);
 }
-// "krillion|2026-11-08|<player id>" from a comment notification.
+function chatBottom() { const sh = $("#cSheet .sheet"); sh.scrollTop = sh.scrollHeight; }
+function renderChat() {
+  const { gid, date, focus, reply } = st.chat, g = gById(gid);
+  const items = chatItems(gid, date);
+  const ranked = rankDay(rowsFor(gid, date).filter((r) => r.play_date === date).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g);
+  let prev = null;
+  $("#cBody").innerHTML = items.length ? items.map((e) => {
+    const mine = e.uid === me.id, cont = prev && prev.uid === e.uid && !e.score; prev = e;
+    const q = chatItem(e.reply);
+    const quote = e.reply ? `<div class="quote"><b>${q ? esc(q.uid === me.id ? "You" : nameOf(q.uid)) : ""}</b> ${q ? esc(q.body.length > 70 ? q.body.slice(0, 69) + "…" : q.body) : "<i>Deleted message</i>"}</div>` : "";
+    const rk = e.score != null ? ranked.find((x) => x.uid === e.uid) : null;
+    const tagS = e.score != null ? `<span class="stag">🔒 ${fmt(e.score)}${rk && ranked.length > 1 ? ` · ${MEDAL[rk.rank] || "#" + rk.rank}` : ""}</span>` : "";
+    return `<div class="bub${mine ? " me" : ""}${cont ? " cont" : ""}${e.id === focus ? " focus" : ""}" data-mid="${esc(e.id)}">
+      ${mine ? "" : `<span class="bav">${cont ? "" : av(e.uid, "s")}</span>`}
+      <div class="bwrap">
+        ${cont || mine ? "" : `<div class="bname">${esc(nameOf(e.uid))}</div>`}
+        <div class="bb">${quote}${tagS}<p>${esc(e.body)}</p></div>
+        <div class="bmeta"><span>${esc(timeOf(e.at))}</span><button type="button" class="blink" data-reply="${esc(e.id)}">Reply</button>${mine && e.msg ? `<button type="button" class="blink" data-delmsg="${esc(e.id)}">Delete</button>` : ""}</div>
+      </div>
+    </div>`;
+  }).join("") : `<div class="yempty">No chat on ${esc(g.name)} yet. Say something! 🦗</div>`;
+  const r = chatItem(reply);
+  $("#replyBar").hidden = !r;
+  if (r) $("#replyTo").innerHTML = `Replying to <b>${esc(r.uid === me.id ? "yourself" : nameOf(r.uid))}</b>: ${esc(r.body.length > 60 ? r.body.slice(0, 59) + "…" : r.body)}`;
+}
+function chatGrow() { const t = $("#chatText"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; $("#chatSend").disabled = !t.value.trim(); }
+async function sendChat() {
+  const t = $("#chatText"), body = t.value.trim();
+  if (!body || !st.chat) return;
+  const { gid, date, reply } = st.chat;
+  $("#chatSend").disabled = true;
+  const { data, error } = await sb.from("messages").insert({ game_id: gid, play_date: date, player_id: me.id, body: body.slice(0, 500), reply_to: reply || null }).select().single();
+  if (error) { $("#chatSend").disabled = false; toast(errText(error, "Couldn't send that. Check your connection.")); return; }
+  msgs.set(data.id, data);
+  t.value = ""; st.chat.reply = null; st.chat.focus = null; chatGrow();
+  renderChat(); renderToday(); chatBottom();
+  callNotify({ type: "message", id: data.id }).catch(() => {});
+}
+async function deleteChat(id) {
+  if (!confirm("Delete this message?")) return;
+  const { error } = await sb.from("messages").delete().eq("id", id);
+  if (error) { toast(errText(error, "Couldn't delete that.")); return; }
+  msgs.delete(id); renderChat(); renderToday();
+}
+// A chat message arrived from someone else.
+function announceMsg(m) {
+  const g = gById(m.game_id); if (!g) return;
+  const open = st.chat && !$("#cSheet").hidden && st.chat.gid === m.game_id && st.chat.date === m.play_date;
+  if (open) { renderChat(); const sh = $("#cSheet .sheet"); if (sh.scrollHeight - sh.scrollTop - sh.clientHeight < 200) chatBottom(); }
+  const tgt = m.reply_to ? (m.reply_to.startsWith("score:") ? m.reply_to.slice(6) : msgs.get(m.reply_to)?.player_id) : null;
+  const head = tgt === me.id ? `↩️ ${nameOf(m.player_id)} replied to you` : `💬 ${nameOf(m.player_id)} in the ${g.name} chat`;
+  const body = m.body.length > 120 ? m.body.slice(0, 119) + "…" : m.body;
+  if (!open) toast(`${head}: “${clip(m.body, 60)}”`, true);
+  localNotify(head, body, `chat-${g.id}-${m.play_date}`, `./?comment=${encodeURIComponent(`${g.id}|${m.play_date}|${m.id}`)}`);
+}
+// "krillion|2026-11-08|<player id or message id>" from a chat notification.
 function openCommentLink(v) {
-  const [gid, date, uid] = String(v || "").split("|");
+  const [gid, date, focus] = String(v || "").split("|");
   if (!gid || !/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return;
   if (!me || !games.length) { pendingComment = v; return; }
-  closeSheets();
-  st.tab = "today"; render();
-  openComments(gid, date, uid);
+  if ($("#cSheet").hidden || !st.chat || st.chat.gid !== gid) closeSheets();
+  if (st.tab !== "today") { st.tab = "today"; render(); }
+  openComments(gid, date, focus);
 }
 function openYesterday() {
   const y = daysAgo(1), res = yesterdayResults();
@@ -910,7 +984,8 @@ async function loadAll() {
   const [g] = await Promise.all([
     sb.from("games").select("*").order("sort").then((r) => { if (r.error) throw r.error; return r.data; }),
     loadPlayers(),
-    fetchAll("scores", "player_id,game_id,play_date,score,details,comment").then((s) => { scores = new Map(s.map((r) => [key(r), tidyKrill(r)])); }),
+    sb.from("messages").select("*").gte("play_date", daysAgo(14)).order("created_at").then((r) => { if (!r.error) msgs = new Map(r.data.map((m) => [m.id, m])); }),
+    fetchAll("scores", "player_id,game_id,play_date,score,details,comment,comment_at,created_at").then((s) => { scores = new Map(s.map((r) => [key(r), tidyKrill(r)])); }),
   ]);
   allGames = g; games = g.filter((x) => x.active);
   render(); checkWins(); render();
@@ -931,8 +1006,15 @@ function subscribe() {
         }
       }
       checkWins(); render();
+      if (st.chat && !$("#cSheet").hidden) renderChat();
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "players" }, () => loadPlayers().then(render).catch(() => {}))
+    .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (p) => {
+      if (p.eventType === "DELETE") { if (p.old && p.old.id) msgs.delete(p.old.id); }
+      else { const had = msgs.has(p.new.id); msgs.set(p.new.id, p.new); if (!had && me && p.new.player_id !== me.id) announceMsg(p.new); }
+      if (st.chat && !$("#cSheet").hidden) renderChat();
+      renderToday();
+    })
     .subscribe();
 }
 async function refreshMe() {
@@ -998,7 +1080,9 @@ async function saveScore() {
   const mineBefore = rowsFor(g.id).filter((r) => r.player_id === me.id && r.play_date !== date).map((r) => Number(r.score));
   const pb = mineBefore.length && mineBefore.every((s) => better(g, v, s));
   const comment = $("#comment").value.trim().slice(0, 280) || null;
-  const row = { player_id: me.id, game_id: g.id, play_date: date, score: v, details: null, comment };
+  const old = scores.get(`${me.id}|${g.id}|${date}`);
+  const comment_at = !comment ? null : old && old.comment === comment ? old.comment_at || null : new Date().toISOString();
+  const row = { player_id: me.id, game_id: g.id, play_date: date, score: v, details: null, comment, comment_at };
   if ((g.id === "maptap" || g.id === "timeguessr") && st.rounds && st.rounds.score === v) row.details = { rounds: st.rounds.rounds };
   if (g.id === "krillion" && st.krill && st.krill.score === v) {
     const { tiers, line, puzzle, map, ok } = st.krill;
@@ -1062,8 +1146,11 @@ function wire() {
     if (chip) { st.post = chip.dataset.g; renderPostGame(); fillComment(); prefill(); return; }
     const talk = t.closest("[data-comments]");
     if (talk) { openComments(talk.dataset.comments, todayStr()); return; }
-    const addc = t.closest("[data-addcomment]");
-    if (addc) { closeSheets(); openPost(addc.dataset.addcomment); setTimeout(() => $("#comment").focus(), 250); return; }
+    const rp = t.closest("[data-reply]");
+    if (rp) { st.chat.reply = rp.dataset.reply; renderChat(); $("#chatText").focus(); return; }
+    const dm = t.closest("[data-delmsg]");
+    if (dm) { deleteChat(dm.dataset.delmsg); return; }
+    if (t.closest("#replyX")) { st.chat.reply = null; renderChat(); return; }
     if (t.closest("[data-close]") || t.classList.contains("sheet-wrap")) { closeSheets(); return; }
     const gp = t.closest("[data-game]");
     if (gp) { st.game = gp.dataset.game; st.sort = null; save("lii.board", st.game); renderBoards(); return; }
@@ -1105,6 +1192,9 @@ function wire() {
   };
   $("#paste").addEventListener("input", () => onPasteText($("#paste").value));
   $("#comment").addEventListener("input", commentLeft);
+  $("#chatText").addEventListener("input", chatGrow);
+  $("#chatText").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !matchMedia("(pointer:coarse)").matches) { e.preventDefault(); sendChat(); } });
+  $("#chatForm").addEventListener("submit", (e) => { e.preventDefault(); sendChat(); });
   $("#date").addEventListener("change", fillComment);
   $("#pasteBtn").onclick = async () => {
     try { const txt = await navigator.clipboard.readText(); if (txt) onPasteText(txt); }
