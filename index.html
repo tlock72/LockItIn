@@ -57,7 +57,7 @@
 <div id="main" hidden>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand"><span class="word" role="img" aria-label="LockItIn"><span aria-hidden="true">L</span><span aria-hidden="true">o</span><span aria-hidden="true">c</span><span aria-hidden="true">k</span><span aria-hidden="true">I</span><span aria-hidden="true">t</span><span aria-hidden="true">I</span><span aria-hidden="true">n</span></span></div>
+      <button class="brand home" type="button" data-tab="today" aria-label="LockItIn: back to Today"><span class="word" aria-hidden="true"><span aria-hidden="true">L</span><span aria-hidden="true">o</span><span aria-hidden="true">c</span><span aria-hidden="true">k</span><span aria-hidden="true">I</span><span aria-hidden="true">t</span><span aria-hidden="true">I</span><span aria-hidden="true">n</span></span></button>
       <nav class="topnav" aria-label="Sections">
         <button data-tab="today">Today</button>
         <button data-tab="boards">Leaderboards</button>
@@ -89,18 +89,35 @@
       <div class="gamepicker" id="gamePicker" role="tablist" aria-label="Game"></div>
       <div class="row between wrap">
         <div class="seg" id="period" role="group" aria-label="Period">
-          <button data-p="7">7 days</button><button data-p="30">30 days</button><button data-p="0">All time</button>
+          <button data-p="0">All time</button><button data-p="30">Month</button><button data-p="7">Week</button>
         </div>
-        <span class="note" id="rankNote"></span>
+        <div class="seg" id="podMetric" role="group" aria-label="Rank the podium by">
+          <button data-m="wins">Days won</button><button data-m="avg">Average score</button>
+        </div>
       </div>
       <div class="podium" id="podium"></div>
-      <div class="tiles" id="tiles"></div>
-      <div class="tablewrap" id="board"></div>
-      <p class="note" id="boardNote"></p>
-      <h3 id="krillH" hidden></h3>
-      <div class="tablewrap" id="krill" hidden></div>
-      <h3 id="gridH"></h3>
-      <div class="tablewrap" id="grid"></div>
+      <p class="note center" id="rankNote"></p>
+      <div id="perGame" class="stack wide">
+        <div class="tiles" id="tiles"></div>
+        <div class="tablewrap" id="board"></div>
+        <p class="note" id="boardNote"></p>
+        <h3 id="krillH" hidden></h3>
+        <div class="tablewrap" id="krill" hidden></div>
+        <h3 id="gridH"></h3>
+        <div class="tablewrap" id="grid"></div>
+      </div>
+      <div id="allGames" class="stack wide" hidden>
+        <div class="panel race-panel">
+          <div class="row between wrap">
+            <div class="stack tight"><h2>The race</h2><p class="note" id="raceSub"></p></div>
+            <button class="btn small" id="raceReplay" type="button">▶ Replay the race</button>
+          </div>
+          <div class="race" id="race"></div>
+          <div class="racekey" id="raceKey"></div>
+        </div>
+        <div class="tablewrap" id="allTable"></div>
+        <p class="note">One point for winning each game each day, and every game is worth the same. A tie shares the point. A win needs at least two players.</p>
+      </div>
     </section>
 
     <!-- FAMILY -->
@@ -113,7 +130,6 @@
             <button class="link" id="switchBtn" type="button"></button>
           </div>
         </div>
-        <div class="mystats" id="myStats"></div>
         <details class="edit">
           <summary>Edit name, color or picture</summary>
           <div class="stack">
@@ -134,6 +150,17 @@
       <div class="panel">
         <h2>The family</h2>
         <div class="family" id="familyList"></div>
+      </div>
+
+      <div class="panel" id="notifPanel">
+        <h2>Notifications</h2>
+        <p class="note" id="notifNote">Get a buzz when anyone locks in a score, and when someone wins the day.</p>
+        <div class="row wrap">
+          <button class="btn small" id="notifOn" type="button">Turn on notifications</button>
+          <button class="btn ghost small" id="notifTest" type="button" hidden>Send me a test</button>
+          <button class="link" id="notifOff" type="button" hidden>Turn off</button>
+        </div>
+        <p class="msg" id="notifMsg" role="status"></p>
       </div>
 
       <div class="panel">

@@ -9,16 +9,20 @@ It works on phones (add it to your home screen and it opens like an app) and in 
 ## What's in it
 
 - **One-time login:** open the link, tap your name (or add yourself), done. The device remembers you. No passwords or codes. One person can be logged in on a phone and a computer at the same time.
-- **Today:**
+- **Today** (the app always opens here; tap the LockItIn logo to come back):
   - A card for each game with a Play link, your score and place, and who has played.
+  - Once everyone has played a game, its card turns gold and shows **who won the day**, with their face and a podium of everyone's score. Tap **Today's result** in the corner to flip it over to your own score, and **Winner** to flip it back. It goes back to the winner whenever you leave the tab.
   - **Lock in my score** opens a sheet. Paste the share text and the score fills in. Confetti for a new personal best or for taking the lead.
 - **Yesterday's winners:** a button that reveals who took the crown in each game yesterday.
-- **Leaderboards:** one per game, for the last 7 days, 30 days or all time:
-  - a podium for the top three
+- **Leaderboards:** opens on **All time**, with **Month** (last 30 days) and **Week** (last 7 days) next to it:
+  - **All games:** a race where winning any game on any day is worth one point, and every game counts the same. Bars are split by game, and **Replay the race** plays it back day by day. A tie shares the point.
+  - one board per game, with the whole family on it
+  - a podium for the top four, ranked by **Days won** (the default) or **Average score**
   - running stats: top score, family average, most wins and the hottest streak
   - a table with average, best, total, wins, games played, streak and a "form" line of each person's last 10 scores
   - a 14-day grid with daily winners crowned
-- **Family:** your stats per game, your name, color and profile picture, and the whole family list. Admins also get game and people settings.
+- **Notifications:** everyone gets one when someone locks in a score, and when someone wins the day. See [Notifications](#notifications) for the one-time setup.
+- **Family:** your name, color and profile picture, and the whole family list. Admins also get game and people settings.
 
 ## Profile pictures
 
@@ -32,6 +36,15 @@ The Supabase project is already set up and connected in [`config.js`](config.js)
 2. Go to **SQL Editor → New query**, paste [`supabase/schema.sql`](supabase/schema.sql) and click **Run**. It's safe to run again later.
 3. Go to **Authentication → Sign In / Providers** and switch on **Allow anonymous sign-ins**.
 4. Copy the **Project URL** and **anon** key from **Project Settings → API** into `config.js`.
+
+### Notifications
+
+In the app, everyone sees a pop-up when someone else locks in a score or wins the day. To get notifications on phones and computers when the app is closed, do this once:
+
+1. Run [`supabase/schema.sql`](supabase/schema.sql) again (SQL Editor). It adds the notification tables.
+2. In Supabase, go to **Edge Functions → Deploy a new function → Via Editor**. Name it `notify`, paste in [`supabase/functions/notify/index.ts`](supabase/functions/notify/index.ts), and deploy. (Or with the Supabase CLI: `supabase functions deploy notify`.) There are no keys to copy: it makes its own the first time it runs.
+3. Everyone opens **Family → Notifications → Turn on notifications** on each device.
+   - **iPhone:** notifications only work once LockItIn is on the Home Screen (iOS 16.4 or later). Open it from the Home Screen icon, then turn them on.
 
 ### Put it online (GitHub Pages)
 

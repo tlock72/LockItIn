@@ -1,6 +1,6 @@
 // LockItIn service worker: keeps the app shell available offline and loads fast.
 // Bump VERSION whenever you change app files so phones pick up the update.
-const VERSION = "lockitin-v13";
+const VERSION = "lockitin-v14";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "config.js",
   "manifest.webmanifest", "icons/icon.svg", "icons/glyph.svg", "icons/icon-192.png", "icons/apple-touch-icon.png"
@@ -26,4 +26,32 @@ self.addEventListener("fetch", (e) => {
       .then((res) => { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); return res; })
       .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match("index.html")))
   );
+});
+
+// Notifications from the "notify" Edge Function: someone locked in a score, or someone won the day.
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : "" }; }
+  e.waitUntil((async () => {
+    // If LockItIn is open and in front of you, the app shows its own pop-up instead.
+    // (Safari wants every push shown, so it always gets the notification.)
+    const ua = self.navigator.userAgent || "";
+    const safari = /Safari/.test(ua) && !/Chrome|Chromium|Edg|Android/.test(ua);
+    if (!safari) {
+      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      if (wins.some((c) => c.focused && c.visibilityState === "visible")) return;
+    }
+    await self.registration.showNotification(d.title || "LockItIn", {
+      body: d.body || "", tag: d.tag, renotify: !!d.tag, icon: "icons/icon-192.png", data: { url: d.url || "./" },
+    });
+  })());
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || "./", self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+    const w = wins.find((c) => "focus" in c);
+    return w ? w.focus() : self.clients.openWindow(url);
+  }));
 });

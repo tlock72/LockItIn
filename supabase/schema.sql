@@ -171,6 +171,50 @@ drop function if exists set_admin(uuid, boolean);
 revoke all on function join_family(text, text), claim_player(uuid), leave_device(), update_me(text, text, text), admin_update_player(uuid, text, boolean) from public, anon;
 grant execute on function whoami(), join_family(text, text), claim_player(uuid), leave_device(), update_me(text, text, text), admin_update_player(uuid, text, boolean), my_player_id(), i_am_admin() to authenticated;
 
+-- ---------- notifications ----------
+-- Each device that switched on notifications. Only the "notify" Edge Function reads these (with the service key).
+create table if not exists push_subs (
+  endpoint text primary key,
+  player_id uuid not null references players on delete cascade,
+  sub jsonb not null,
+  created_at timestamptz not null default now()
+);
+-- The notification keys. The Edge Function makes them the first time it runs; nobody else can read them.
+create table if not exists push_config (
+  id int primary key default 1 check (id = 1),
+  public_key text not null,
+  private_key text not null
+);
+-- What has already been sent, so a score or a day's winner is only announced once.
+create table if not exists push_log (
+  k text primary key,
+  at timestamptz not null default now()
+);
+alter table push_subs   enable row level security;  -- no policies: only the functions below and the Edge Function touch these
+alter table push_config enable row level security;
+alter table push_log    enable row level security;
+revoke all on push_subs, push_config, push_log from anon, authenticated;
+
+-- Switch on notifications for this device (or move them to whoever is logged in on it now).
+create or replace function save_push(p_sub jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare v_me uuid := my_player_id(); v_end text := p_sub->>'endpoint';
+begin
+  if v_me is null then raise exception 'Pick who you are first'; end if;
+  if v_end is null or v_end !~ '^https://' then raise exception 'That isn''t a notification address'; end if;
+  insert into push_subs (endpoint, player_id, sub) values (v_end, v_me, p_sub)
+    on conflict (endpoint) do update set player_id = excluded.player_id, sub = excluded.sub;
+end $$;
+
+-- Switch off notifications for this device.
+create or replace function drop_push(p_endpoint text) returns void
+language sql security definer set search_path = public as $$
+  delete from push_subs where endpoint = p_endpoint
+$$;
+
+revoke all on function save_push(jsonb), drop_push(text) from public, anon;
+grant execute on function save_push(jsonb), drop_push(text) to authenticated;
+
 -- ---------- live updates ----------
 do $$ begin alter publication supabase_realtime add table scores; exception when duplicate_object then null; end $$;
 do $$ begin alter publication supabase_realtime add table players; exception when duplicate_object then null; end $$;

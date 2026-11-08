@@ -20,11 +20,13 @@ let scores = new Map();       // "player|game|date" -> row
 let pendingShare = null;
 let adminDirty = false;
 
-const st = { tab: "today", game: null, period: "30", sort: null, post: null, newColor: null, editColor: null };
+// The app always opens on Today, and the leaderboards always open on All time.
+// pm = what the podium ranks by ("wins" = days won, "avg" = average score).
+// flipped = Today cards turned over to show today's result instead of the day's winner.
+const st = { tab: "today", game: null, period: "0", pm: "wins", sort: null, post: null, newColor: null, editColor: null, flipped: new Set(), flipAnim: null, winSeen: null };
 try {
-  st.tab = localStorage.getItem("lii.tab") || st.tab;
   st.game = localStorage.getItem("lii.game");
-  st.period = localStorage.getItem("lii.period") || st.period;
+  st.pm = localStorage.getItem("lii.pm") === "avg" ? "avg" : "wins";
 } catch (e) {}
 
 /* ---------- helpers ---------- */
@@ -80,10 +82,12 @@ const person = (pid, size = "s") => `<span class="person">${av(pid, size)}<span 
 function show(screen) {
   for (const id of ["screen-loading", "screen-setup", "screen-who", "main"]) $("#" + id).hidden = id !== screen;
 }
-let toastTimer;
-function toast(text) {
+let toastTimer, toastQ = [];
+function toast(text, queue) {
+  if (queue && !$("#toast").hidden) { if (toastQ.length < 4) toastQ.push(text); return; }
   const t = $("#toast"); t.textContent = text; t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2800);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; if (toastQ.length) setTimeout(() => toast(toastQ.shift()), 200); }, 2800);
 }
 
 /* ---------- confetti ---------- */
@@ -274,7 +278,7 @@ function anyStreak(uid) {
   while (dates.has(daysAgo(i))) { n++; i++; }
   return n;
 }
-function gameTable(gid, days) {
+function gameTable(gid, days, everyone) {
   const g = gById(gid), from = days ? daysAgo(days - 1) : null, t = {};
   for (const [date, list] of Object.entries(byDate(gid, from))) {
     const multi = list.length > 1;
@@ -285,8 +289,10 @@ function gameTable(gid, days) {
       if (multi && e.rank === 1) r.wins++;
     }
   }
+  // everyone: include family members with no scores yet, so the board shows the whole family
+  if (everyone) for (const uid of Object.keys(players)) t[uid] = t[uid] || { uid, played: 0, total: 0, best: null, bestDate: null, wins: 0 };
   return Object.values(t).map((r) => ({
-    ...r, avg: r.total / r.played, streak: gameStreak(r.uid, gid),
+    ...r, avg: r.played ? r.total / r.played : null, streak: r.played ? gameStreak(r.uid, gid) : 0,
     form: rowsFor(gid).filter((x) => x.player_id === r.uid).sort((a, b) => (a.play_date < b.play_date ? -1 : 1)).slice(-10).map((x) => Number(x.score)),
   }));
 }
@@ -299,13 +305,41 @@ function sparkline(vals, g) {
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-label="Last ${vals.length} scores"><polyline points="${pts.map((p) => p.map((n) => n.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="${gc(g.id)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3" fill="${gc(g.id)}"/></svg>`;
 }
 
+// Today's ranking for one game, and whether the day is settled (everyone in the family has played).
+function dayResult(g, date = todayStr()) {
+  const list = rankDay(rowsFor(g.id, date).filter((r) => r.play_date === date).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g);
+  const fam = Object.keys(players).length;
+  const done = fam > 1 && list.length >= fam;
+  return { list, done, winners: done ? list.filter((e) => e.rank === 1).map((e) => e.uid) : [] };
+}
+
+// All games: one point for winning each game each day (a tie shares the point; a win needs two players).
+function racePoints(from) {
+  const pts = {}, days = {};
+  for (const uid of Object.keys(players)) pts[uid] = { total: 0, by: {} };
+  for (const g of games) {
+    for (const [date, list] of Object.entries(byDate(g.id, from))) {
+      if (list.length < 2) continue;
+      const win = rankDay(list, g).filter((e) => e.rank === 1);
+      for (const e of win) {
+        const p = (pts[e.uid] = pts[e.uid] || { total: 0, by: {} }), share = 1 / win.length;
+        p.total += share; p.by[g.id] = (p.by[g.id] || 0) + share;
+        ((days[date] = days[date] || [])).push({ uid: e.uid, gid: g.id, share });
+      }
+    }
+  }
+  return { pts, days };
+}
+const fmtPts = (n) => { const r = Math.round(n * 10) / 10; return r.toLocaleString(); };
+const ptsWord = (n) => `${fmtPts(n)} ${Math.round(n * 10) === 10 ? "pt" : "pts"}`;
+
 /* ---------- rendering ---------- */
 function render() {
   if (!me || !games.length) return;
   if (!["today", "boards", "family"].includes(st.tab)) st.tab = "today";
-  if (!gById(st.game)) st.game = games[0].id;
+  if (st.game !== "all" && !gById(st.game)) st.game = "all";
   if (!gById(st.post)) st.post = games[0].id;
-  $$("[data-tab]").forEach((b) => (b.dataset.tab === st.tab && !b.classList.contains("me-btn") ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
+  $$("[data-tab]").forEach((b) => (b.dataset.tab === st.tab && !b.classList.contains("me-btn") && !b.classList.contains("home") ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
   for (const t of ["today", "boards", "family"]) $("#tab-" + t).hidden = t !== st.tab;
   $("#meBtn").innerHTML = av(me.id, "m");
   renderToday(); renderBoards(); renderFamily();
@@ -340,12 +374,36 @@ function renderToday() {
 
   const fam = Object.keys(players).length;
   $("#cards").innerHTML = games.map((g) => {
-    const list = rankDay(rowsFor(g.id, today).filter((r) => r.play_date === today).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g);
+    const { list, done, winners } = dayResult(g, today);
     const mine = list.find((e) => e.uid === me.id);
-    const done = fam > 1 && list.length >= fam; // everyone has played: the day is settled
+    const won = winners.length > 0;                 // the day is settled: show the winner first
+    const showWin = won && !st.flipped.has(g.id);
     const link = g.url ? `<a class="play" href="${esc(g.url)}" target="_blank" rel="noopener">Play ↗</a>` : "";
-    return `<article class="gcard" style="--gc:${gc(g.id)}">
-      <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3>${link}</div>
+    const flip = won
+      ? `<button class="flip" type="button" data-flip="${esc(g.id)}" aria-label="${showWin ? "Show today's result" : "Show the day's winner"}">${showWin ? "Today's result" : "🏆 Winner"}<span class="fi" aria-hidden="true">↻</span></button>`
+      : "";
+    const cls = `gcard${won ? " decided" : ""}${showWin ? " showwin" : ""}${st.flipAnim === g.id ? " flipping" : ""}`;
+    if (showWin) {
+      const top = list[0], many = winners.length > 1;
+      const champ = many
+        ? `<span class="champav crowned">${winners.slice(0, 3).map((u) => av(u, "l")).join("")}</span>`
+        : `<span class="champav crowned">${av(winners[0], "l")}</span>`;
+      const steps = list.map((e, i) => {
+        const h = list.length > 1 ? 1 - (i / (list.length - 1)) * 0.7 : 1;
+        return `<div class="dp p${i + 1}${e.rank === 1 ? " w" : ""}${e.uid === me.id ? " me" : ""}" title="${esc(nameOf(e.uid))}: ${fmt(e.s)}">
+          <span class="dpm">${MEDAL[e.rank] || "#" + e.rank}</span>${av(e.uid, "s")}<span class="dpn">${esc(nameOf(e.uid))}</span><span class="dps">${fmt(e.s)}</span>
+          <span class="dpstep" style="--h:${h.toFixed(2)}">${e.rank}</span></div>`;
+      }).join("");
+      return `<article class="${cls}" style="--gc:${gc(g.id)}">
+        <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3>${flip}</div>
+        <div class="gwin">
+          <div class="champ">${champ}<div class="ctext"><div class="cflag">🏆 ${many ? "Shared win" : "Won the day"}</div><div class="cname">${esc(listNames(winners))}</div><div class="cscore">${fmt(top.s)}${g.max_score ? `<span class="of"> / ${fmt(g.max_score)}</span>` : ""}</div></div></div>
+          <div class="dpod" aria-label="Today's ${esc(g.name)} podium">${steps}</div>
+        </div>
+      </article>`;
+    }
+    return `<article class="${cls}" style="--gc:${gc(g.id)}">
+      <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3><span class="gtop-r">${link}${flip}</span></div>
       <div class="gbody">
         ${mine
           ? `<div class="mine"><span class="big">${fmt(mine.s)}</span>${g.max_score ? `<span class="of">/ ${fmt(g.max_score)}</span>` : ""}<span class="pill on">${mine.rank === 1 && list.length > 1 ? "👑 " : ""}#${mine.rank} of ${list.length}</span></div>`
@@ -357,31 +415,54 @@ function renderToday() {
       </div>
     </article>`;
   }).join("");
+  st.flipAnim = null;
 }
 
 function sortHead(k, label, active) {
   return `<th><button data-sort="${k}" ${active ? 'aria-sort="descending"' : ""}>${label}${active ? " ↓" : ""}</button></th>`;
 }
+// Podium for the top four: 2nd, 1st, 3rd, 4th from left to right.
+function podiumHTML(rows, valOf) {
+  if (!rows.length) return "";
+  const top = rows.slice(0, 4);
+  const slot = (r, place) => r
+    ? `<div class="pod p${place}"><span class="${place === 1 ? "crowned" : ""}">${av(r.uid, place === 1 ? "l" : "m")}</span><span class="nm">${esc(nameOf(r.uid))}</span><span class="val">${valOf(r)}</span><div class="step">${place}</div></div>`
+    : `<div class="pod p${place} empty"><span class="nm muted">–</span><div class="step">${place}</div></div>`;
+  const order = top.length >= 4 ? [2, 1, 3, 4] : [2, 1, 3];
+  return `<div class="podium-in n${order.length}">${order.map((p) => slot(top[p - 1], p)).join("")}</div>`;
+}
+
 function renderBoards() {
+  const all = st.game === "all";
+  $("#gamePicker").innerHTML = `<button class="gp" role="tab" style="--gc:var(--accent)" data-game="all" aria-selected="${all}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>All games</span></button>`
+    + games.map((x) => `<button class="gp" role="tab" style="--gc:${gc(x.id)}" data-game="${esc(x.id)}" aria-selected="${!all && x.id === st.game}">${icon(x.id)}<span>${esc(x.name)}</span></button>`).join("");
+  $$("#period button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === st.period));
+  $$("#podMetric button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === st.pm));
+  $("#podMetric").hidden = all;
+  $("#perGame").hidden = all; $("#allGames").hidden = !all;
+  if (all) return renderAllGames();
+
   const g = gById(st.game), days = +st.period, low = g.better === "low";
   const pane = $("#tab-boards"); pane.style.setProperty("--gc", gc(g.id));
-  $("#gamePicker").innerHTML = games.map((x) => `<button class="gp" role="tab" style="--gc:${gc(x.id)}" data-game="${esc(x.id)}" aria-selected="${x.id === g.id}">${icon(x.id)}<span>${esc(x.name)}</span></button>`).join("");
-  $$("#period button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === st.period));
-
-  const rows = gameTable(g.id, days);
-  const sk = ["avg", "best", "total", "wins", "played", "streak"].includes(st.sort) ? st.sort : "avg";
-  const asc = low && (sk === "avg" || sk === "best");
-  rows.sort((a, b) => (asc ? a[sk] - b[sk] : b[sk] - a[sk]) || b.played - a.played);
+  const rows = gameTable(g.id, days, true);
+  const sk = ["avg", "best", "total", "wins", "played", "streak"].includes(st.sort) ? st.sort : st.pm;
+  const lowFirst = (k) => low && (k === "avg" || k === "best");
+  const cmp = (k) => (a, b) => {
+    const x = a[k], y = b[k];
+    if (x == null || y == null) return (x == null) - (y == null);
+    return lowFirst(k) ? x - y : y - x;
+  };
+  // Ties on days won go to the better average, and ties on anything else go to more days won.
+  const second = sk === "wins" ? cmp("avg") : cmp("wins");
+  rows.sort((a, b) => cmp(sk)(a, b) || second(a, b) || b.played - a.played);
   rows.forEach((r, i, a) => (r.rank = i && a[i - 1][sk] === r[sk] ? a[i - 1].rank : i + 1));
-  const label = { avg: "average score", best: "best score", total: "total points", wins: "daily wins", played: "games played", streak: "current streak" }[sk];
-  $("#rankNote").textContent = `Ranked by ${label}`;
+  const label = { avg: "average score", best: "best score", total: "total points", wins: "days won", played: "games played", streak: "current streak" }[sk];
+  $("#rankNote").textContent = `Ranked by ${label} · ${days ? `last ${days} days` : "all time"}`;
 
-  // podium
-  const top = rows.slice(0, 3);
-  const slot = (r, place) => r
-    ? `<div class="pod p${place}"><span class="${place === 1 ? "crowned" : ""}">${av(r.uid, place === 1 ? "l" : "m")}</span><span class="nm">${esc(nameOf(r.uid))}</span><span class="val">${fmt(r[sk])}</span><div class="step">${place}</div></div>`
-    : `<div class="pod p${place} empty"><span class="nm muted">–</span><div class="step">${place}</div></div>`;
-  $("#podium").innerHTML = rows.length ? slot(top[1], 2) + slot(top[0], 1) + slot(top[2], 3) : "";
+  const valOf = (r) => sk === "wins" ? `${r.wins} ${r.wins === 1 ? "day" : "days"}`
+    : sk === "streak" ? (r.streak ? `🔥 ${r.streak}` : "–")
+    : r[sk] == null ? "–" : fmt(r[sk]);
+  $("#podium").innerHTML = rows.some((r) => r.played) ? podiumHTML(rows, valOf) : "";
 
   // running stats tiles
   const period = rowsFor(g.id, days ? daysAgo(days - 1) : null);
@@ -399,14 +480,14 @@ function renderBoards() {
 
   // table
   const head = `<tr><th>#</th><th>Player</th>${sortHead("avg", "Avg", sk === "avg")}${sortHead("best", "Best", sk === "best")}${low ? "" : sortHead("total", "Total", sk === "total")}${sortHead("wins", "Wins", sk === "wins")}${sortHead("played", "Played", sk === "played")}${sortHead("streak", "🔥", sk === "streak")}<th>Form</th></tr>`;
-  $("#board").innerHTML = rows.length
+  $("#board").innerHTML = rows.some((r) => r.played)
     ? `<table><thead>${head}</thead><tbody>${rows.map((r) => `<tr class="${r.uid === me.id ? "me" : ""}">
         <td class="rank ${MEDAL[r.rank] ? "" : "plain"}">${MEDAL[r.rank] || r.rank}</td>
         <td class="pl">${person(r.uid)}</td>
-        <td>${fmt(r.avg)}</td><td>${fmt(r.best)}</td>${low ? "" : `<td>${fmt(r.total)}</td>`}<td>${r.wins}</td><td>${r.played}</td><td>${r.streak || "–"}</td>
+        <td>${fmt(r.avg)}</td><td>${fmt(r.best)}</td>${low ? "" : `<td>${r.played ? fmt(r.total) : "–"}</td>`}<td>${r.wins}</td><td>${r.played}</td><td>${r.streak || "–"}</td>
         <td class="spark">${sparkline(r.form, g)}</td></tr>`).join("")}</tbody></table>`
     : `<div class="empty"><b>No ${esc(g.name)} scores ${days ? `in the last ${days} days` : "yet"}</b>Play today's ${esc(g.name)} and lock in your score to get on the board.</div>`;
-  $("#boardNote").textContent = `A daily win needs at least two players. Form shows each person's last 10 ${g.name} scores. Tap a column to re-rank.`;
+  $("#boardNote").textContent = `A daily win needs at least two players. Form shows each person's last 10 ${g.name} scores. Tap a column to re-rank the table and podium.`;
 
   // Krillion: answer tiers (from pasted results)
   const kw = $("#krill"), kh = $("#krillH");
@@ -462,24 +543,85 @@ function renderBoards() {
   }
 }
 
+/* ---------- All games: the race ---------- */
+const RACE_ROW = 54;
+let raceTimer = null;
+function raceOrder(pts) {
+  return Object.keys(pts).sort((a, b) => pts[b].total - pts[a].total || nameOf(a).localeCompare(nameOf(b)));
+}
+function renderAllGames() {
+  stopRace();
+  const days = +st.period, from = days ? daysAgo(days - 1) : null;
+  const { pts, days: byDay } = racePoints(from);
+  const order = raceOrder(pts);
+  const rows = order.map((uid) => ({ uid, wins: pts[uid].total }));
+  rows.forEach((r, i, a) => (r.rank = i && a[i - 1].wins === r.wins ? a[i - 1].rank : i + 1));
+  const any = rows.some((r) => r.wins > 0);
+  $("#tab-boards").style.setProperty("--gc", "var(--accent)");
+  $("#rankNote").textContent = `Ranked by points: one for each game won each day · ${days ? `last ${days} days` : "all time"}`;
+  $("#podium").innerHTML = any ? podiumHTML(rows, (r) => ptsWord(r.wins)) : "";
+
+  const dates = Object.keys(byDay).sort();
+  const avail = dates.length ? games.reduce((n, g) => n + Object.values(byDate(g.id, from)).filter((l) => l.length > 1).length, 0) : 0;
+  $("#raceSub").textContent = any
+    ? `${fmtPts(avail)} ${avail === 1 ? "point" : "points"} handed out over ${dates.length} ${dates.length === 1 ? "day" : "days"}`
+    : "";
+  $("#raceReplay").hidden = dates.length < 2;
+  const race = $("#race");
+  race.innerHTML = any ? order.map((uid) => `<div class="rrow${uid === me.id ? " me" : ""}" data-uid="${uid}">
+      <span class="rwho">${av(uid, "m")}<span class="nm">${esc(nameOf(uid))}</span></span>
+      <span class="rtrack"><span class="rbar">${games.map((g) => `<span class="rseg" data-g="${esc(g.id)}" style="--gc:${gc(g.id)}"></span>`).join("")}</span><span class="rval"></span></span>
+    </div>`).join("")
+    : `<div class="empty"><b>No points yet</b>Win a game on a day when at least two of you play to get on the board.</div>`;
+  if (any) race.style.height = order.length * RACE_ROW + "px"; else race.style.height = "";
+  $("#raceKey").innerHTML = any ? games.map((g) => `<span style="--gc:${gc(g.id)}"><i></i>${esc(g.name)}</span>`).join("") : "";
+  if (any) drawRace(pts);
+
+  const totals = Object.fromEntries(games.map((g) => [g.id, order.reduce((n, u) => n + (pts[u].by[g.id] || 0), 0)]));
+  $("#allTable").innerHTML = any
+    ? `<table class="alltable"><thead><tr><th>#</th><th>Player</th>${games.map((g) => `<th style="color:${gc(g.id)}">${esc(g.name)}</th>`).join("")}<th>Points</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr class="${r.uid === me.id ? "me" : ""}"><td class="rank ${MEDAL[r.rank] ? "" : "plain"}">${MEDAL[r.rank] || r.rank}</td><td class="pl">${person(r.uid)}</td>${games.map((g) => `<td>${pts[r.uid].by[g.id] ? fmtPts(pts[r.uid].by[g.id]) : "–"}</td>`).join("")}<td class="tot">${fmtPts(r.wins)}</td></tr>`).join("")}
+      <tr class="famrow"><td></td><td class="pl">Up for grabs</td>${games.map((g) => `<td>${fmtPts(totals[g.id])}</td>`).join("")}<td class="tot">${fmtPts(avail)}</td></tr></tbody></table>`
+    : "";
+}
+// Lay the bars out for a set of points: longest bar on top, each bar split by game.
+function drawRace(pts, label) {
+  const order = raceOrder(pts), max = Math.max(1, ...order.map((u) => pts[u].total));
+  order.forEach((uid, i) => {
+    const row = $(`#race .rrow[data-uid="${uid}"]`); if (!row) return;
+    row.style.transform = `translateY(${i * RACE_ROW}px)`;
+    row.classList.toggle("lead", i === 0 && pts[uid].total > 0);
+    for (const seg of row.querySelectorAll(".rseg")) seg.style.width = ((pts[uid].by[seg.dataset.g] || 0) / max) * 100 + "%";
+    row.querySelector(".rval").textContent = fmtPts(pts[uid].total);
+  });
+  $("#raceSub").dataset.live = label || "";
+  if (label) $("#raceSub").textContent = label;
+}
+function stopRace() { if (raceTimer) { clearInterval(raceTimer); raceTimer = null; } const b = $("#raceReplay"); if (b) b.textContent = "▶ Replay the race"; }
+// Replay: run through the days one by one so you can watch the lead change hands.
+function replayRace() {
+  if (raceTimer) { stopRace(); renderAllGames(); return; }
+  const days = +st.period, from = days ? daysAgo(days - 1) : null;
+  const { days: byDay } = racePoints(from);
+  const dates = Object.keys(byDay).sort();
+  if (!dates.length) return;
+  const run = {}; for (const uid of Object.keys(players)) run[uid] = { total: 0, by: {} };
+  drawRace(run, "And they're off…");
+  const step = Math.max(90, Math.min(600, 6000 / dates.length));
+  let i = 0;
+  $("#raceReplay").textContent = "■ Stop";
+  raceTimer = setInterval(() => {
+    if (i >= dates.length) { stopRace(); renderAllGames(); confetti(["#F2B21B", "#FFD95A", "#5B3DF5"]); return; }
+    const d = dates[i++];
+    for (const w of byDay[d]) { const p = (run[w.uid] = run[w.uid] || { total: 0, by: {} }); p.total += w.share; p.by[w.gid] = (p.by[w.gid] || 0) + w.share; }
+    drawRace(run, nice(d, { weekday: "short", month: "short", day: "numeric", year: d.slice(0, 4) === todayStr().slice(0, 4) ? undefined : "numeric" }));
+  }, step);
+}
+
 function renderFamily() {
   $("#meAvatar").innerHTML = av(me.id, "xl");
   $("#meName").textContent = me.name;
   $("#switchBtn").textContent = `Not ${me.name}? Switch person`;
-  $("#myStats").innerHTML = games.map((g) => {
-    const r = gameTable(g.id, 0).find((x) => x.uid === me.id);
-    return `<div class="mystat" style="--gc:${gc(g.id)}"><span class="g">${esc(g.name)}</span>${r
-      ? `<span>Avg ${fmt(r.avg)} · Best ${fmt(r.best)}</span><span class="s">${r.wins} wins · ${r.played} played${r.streak ? ` · 🔥 ${r.streak}` : ""}</span>${g.id === "krillion" ? (() => {
-          const tot = {}; for (const x of rowsFor("krillion")) if (x.player_id === me.id && x.details && x.details.tiers) for (const t of KRILL_TIERS) tot[t.k] = (tot[t.k] || 0) + (x.details.tiers[t.k] || 0);
-          const s = KRILL_TIERS.filter((t) => tot[t.k]).map((t) => `${tierIcon(t.k)} ${tot[t.k]}`).join("  ");
-          return s ? `<span class="s" title="Your answer tiers, all time">${s}</span>` : "";
-        })() : g.id === "maptap" || g.id === "timeguessr" ? (() => {
-          const x = roundStats(g.id, rowsFor(g.id).filter((r) => r.player_id === me.id && r.details && r.details.rounds));
-          if (!x.n) return "";
-          return `<span class="s" title="All time, from pasted results">${g.id === "maptap" ? `Avg ${fmt(x.avg)} per guess` : `Avg ${fmtKm(x.km)} · ${fmtYrs(x.yrs)} off`}</span>`;
-        })() : ""}`
-      : `<span class="s">Not played yet</span>`}</div>`;
-  }).join("");
   if (!$("details.edit").open) {
     $("#editName").value = me.name; $("#editPic").value = me.avatar_url || ""; st.editColor = me.color; showPicPreview();
     renderSwatches("#editColors", st.editColor);
@@ -619,6 +761,113 @@ function openYesterday() {
   if (winnerColors.length) setTimeout(() => confetti(["#F2B21B", "#FFD95A", ...winnerColors]), 150);
 }
 
+/* ---------- notifications ---------- */
+// In the app: a toast whenever someone else locks in a score, and when someone wins the day.
+// On phones and computers: real notifications through the "notify" Supabase Edge Function (see README).
+const push = { ok: "serviceWorker" in navigator && "PushManager" in window && "Notification" in window, on: false };
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const installed = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const b64u = (s) => { const b = atob((s + "=".repeat((4 - (s.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+const quiet = (p) => Promise.resolve(p).catch(() => {});
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error("timeout")), ms))]);
+const swReady = () => withTimeout(navigator.serviceWorker.ready, 6000);
+async function currentSub() { try { return push.ok ? await (await swReady()).pushManager.getSubscription() : null; } catch (e) { return null; } }
+
+async function callNotify(body) {
+  const { data, error } = await sb.functions.invoke("notify", { body });
+  if (error) throw error;
+  return data || {};
+}
+// After saving a score: ask the server to tell everyone (and announce a winner once everyone has played).
+function tellFamily(row) { callNotify({ type: "score", game_id: row.game_id, play_date: row.play_date }).catch(() => {}); }
+
+// Phone/computer notification while LockItIn is open in the background but push isn't set up.
+async function localNotify(title, body, tag) {
+  if (push.on || document.visibilityState === "visible" || !push.ok || Notification.permission !== "granted") return;
+  try { (await swReady()).showNotification(title, { body, tag, icon: "icons/icon-192.png" }); } catch (e) {}
+}
+function announceScore(r, updated) {
+  const g = gById(r.game_id); if (!g) return;
+  const when = r.play_date === todayStr() ? "" : ` (${nice(r.play_date, { month: "short", day: "numeric" })})`;
+  const { list } = dayResult(g, r.play_date), e = list.find((x) => x.uid === r.player_id);
+  const place = e && list.length > 1 ? ` · ${e.rank === 1 ? "👑 top" : "#" + e.rank} of ${list.length}` : "";
+  const text = `${nameOf(r.player_id)} ${updated ? "updated" : "locked in"} ${g.name}${when}: ${fmt(r.score)}${place}`;
+  toast(`🔒 ${text}`, true);
+  localNotify(`${nameOf(r.player_id)} ${updated ? "updated" : "locked in"} ${g.name}`, `${fmt(r.score)}${place}`, `score-${g.id}-${r.play_date}-${r.player_id}`);
+}
+// Called whenever scores change. The first call only remembers the current winners, so opening the app is quiet.
+function checkWins() {
+  const first = !st.winSeen; st.winSeen = st.winSeen || {};
+  for (const g of games) {
+    const { list, winners } = dayResult(g);
+    const k = winners.length ? `${todayStr()}|${winners.slice().sort().join(",")}` : "";
+    if (first || !k || st.winSeen[g.id] === k) { st.winSeen[g.id] = k; continue; }
+    st.winSeen[g.id] = k;
+    st.flipped.delete(g.id); // show the winner side
+    const youWon = winners.includes(me.id);
+    toast(youWon ? `🏆 You won today's ${g.name}! Take a bow.` : `🏆 ${listNames(winners)} won today's ${g.name}!`, true);
+    localNotify(`🏆 ${listNames(winners)} won the day!`, `${g.name}: ${list.map((e) => `${MEDAL[e.rank] || "#" + e.rank} ${nameOf(e.uid)} ${fmt(e.s)}`).join(" · ")}`, `win-${g.id}`);
+    confetti(["#F2B21B", "#FFD95A", ...winners.map((u) => safeColor(players[u]?.color))]);
+    if (navigator.vibrate) navigator.vibrate([30, 60, 30]);
+  }
+}
+
+async function renderNotif() {
+  const on = $("#notifOn"), off = $("#notifOff"), test = $("#notifTest"), note = $("#notifNote");
+  const sub = await currentSub();
+  push.on = !!sub && Notification.permission === "granted";
+  on.hidden = push.on; off.hidden = test.hidden = !push.on;
+  if (!push.ok) {
+    on.hidden = true;
+    note.textContent = isIOS && !installed()
+      ? "To get notifications on iPhone, add LockItIn to your Home Screen (Share, then Add to Home Screen), open it from there, and come back here."
+      : "This browser can't show notifications. You'll still see a pop-up in the app when someone locks in a score or wins the day.";
+  } else if (Notification.permission === "denied") {
+    on.hidden = true;
+    note.textContent = "Notifications are blocked for LockItIn. Allow them in this device's settings, then come back here.";
+  } else {
+    note.textContent = push.on
+      ? "On for this device 🔔 You'll get a buzz when anyone locks in a score, and when someone wins the day."
+      : "Get a buzz when anyone locks in a score, and when someone wins the day.";
+  }
+}
+async function notifEnable() {
+  const m = $("#notifMsg"), btn = $("#notifOn"); m.className = "msg"; m.textContent = "";
+  btn.disabled = true; btn.textContent = "Turning on…";
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw new Error("Notifications weren't allowed. You can allow them in this device's settings.");
+    const { publicKey } = await callNotify({ type: "key" }).catch(() => { throw new Error("Notifications aren't switched on in Supabase yet. Ask an admin (see the README)."); });
+    const reg = await swReady();
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && sub.options && sub.options.applicationServerKey) {
+      const cur = btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      if (cur !== publicKey) { await sub.unsubscribe(); sub = null; }
+    }
+    sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(publicKey) });
+    const { error } = await sb.rpc("save_push", { p_sub: sub.toJSON() });
+    if (error) throw error;
+    m.className = "msg ok"; m.textContent = "✓ Notifications on";
+    toast("Notifications on 🔔");
+  } catch (e) {
+    m.className = "msg err"; m.textContent = errText(e, "Couldn't turn notifications on. Try again.");
+  }
+  btn.disabled = false; btn.textContent = "Turn on notifications";
+  renderNotif();
+}
+async function notifDisable() {
+  const sub = await currentSub();
+  if (sub) { await quiet(sb.rpc("drop_push", { p_endpoint: sub.endpoint })); await sub.unsubscribe().catch(() => {}); }
+  $("#notifMsg").className = "msg"; $("#notifMsg").textContent = "Notifications off for this device.";
+  renderNotif();
+}
+// Keep this device's notifications pointing at whoever is logged in on it.
+async function syncPush() {
+  const sub = await currentSub();
+  if (sub && Notification.permission === "granted") await quiet(sb.rpc("save_push", { p_sub: sub.toJSON() }));
+  renderNotif();
+}
+
 /* ---------- data ---------- */
 async function fetchAll(table, cols) {
   const out = [];
@@ -643,7 +892,7 @@ async function loadAll() {
     fetchAll("scores", "player_id,game_id,play_date,score,details").then((s) => { scores = new Map(s.map((r) => [key(r), tidyKrill(r)])); }),
   ]);
   allGames = g; games = g.filter((x) => x.active);
-  render();
+  render(); checkWins(); render();
 }
 let subscribed = false;
 function subscribe() {
@@ -651,8 +900,12 @@ function subscribe() {
   sb.channel("lockitin-live")
     .on("postgres_changes", { event: "*", schema: "public", table: "scores" }, (p) => {
       if (p.eventType === "DELETE") { if (p.old && p.old.player_id) scores.delete(key(p.old)); else return loadAll(); }
-      else scores.set(key(p.new), tidyKrill(p.new));
-      render();
+      else {
+        const prev = scores.get(key(p.new));
+        scores.set(key(p.new), tidyKrill(p.new));
+        if (me && p.new.player_id !== me.id && (!prev || Number(prev.score) !== Number(p.new.score))) announceScore(p.new, !!prev);
+      }
+      checkWins(); render();
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "players" }, () => loadPlayers().then(render).catch(() => {}))
     .subscribe();
@@ -680,6 +933,7 @@ async function enterMain(welcome) {
   show("main");
   try { await loadAll(); } catch (e) { toast("Can't reach the scoreboard right now."); }
   subscribe();
+  syncPush();
   if (welcome) { toast(welcome); confetti([safeColor(me.color), "#F2B21B"]); }
   if (pendingShare) { const g = guessGame(pendingShare); openPost(g ? g.id : null, pendingShare); pendingShare = null; }
 }
@@ -728,6 +982,7 @@ async function saveScore() {
   $("#save").disabled = false;
   if (error) return fail(errText(error, "Couldn't save. Check your connection and try again."));
   scores.set(key(row), row);
+  tellFamily(row);
   const dayList = rankDay(rowsFor(g.id).filter((r) => r.play_date === date).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g);
   const mine = dayList.find((e) => e.uid === me.id);
   const leading = mine && mine.rank === 1 && dayList.length > 1;
@@ -735,7 +990,7 @@ async function saveScore() {
   toast(pb ? `New personal best in ${g.name}! 🎉` : leading ? `You're top of the family in ${g.name}! 👑` : `${g.name} locked in: ${fmt(v)} 🔒`);
   confetti(pb || leading ? ["#F2B21B", "#FFD95A", safeColor(me.color)] : [safeColor(me.color), "#FFFFFF", "#5B3DF5"]);
   if (navigator.vibrate) navigator.vibrate(pb || leading ? [20, 40, 20] : 15);
-  render();
+  checkWins(); render();
 }
 
 /* ---------- events ---------- */
@@ -757,7 +1012,20 @@ function wire() {
       return;
     }
     const nav = t.closest("[data-tab]");
-    if (nav) { st.tab = nav.dataset.tab; save("lii.tab", st.tab); render(); window.scrollTo(0, 0); return; }
+    if (nav) {
+      // Leaving Today turns every card back to the winner side; the logo always goes home to Today.
+      if (nav.dataset.tab !== st.tab) st.flipped.clear();
+      if (nav.dataset.tab !== "boards") stopRace();
+      st.tab = nav.dataset.tab; render(); window.scrollTo(0, 0); return;
+    }
+    const fl = t.closest("[data-flip]");
+    if (fl) {
+      const id = fl.dataset.flip;
+      if (st.flipped.has(id)) st.flipped.delete(id); else st.flipped.add(id);
+      st.flipAnim = id; renderToday();
+      const again = $(`[data-flip="${CSS.escape(id)}"]`); if (again) again.focus({ preventScroll: true });
+      return;
+    }
     const post = t.closest("[data-post]");
     if (post) { openPost(post.dataset.post); return; }
     const chip = t.closest(".chip");
@@ -766,7 +1034,9 @@ function wire() {
     const gp = t.closest("[data-game]");
     if (gp) { st.game = gp.dataset.game; st.sort = null; save("lii.game", st.game); renderBoards(); return; }
     const per = t.closest("#period button");
-    if (per) { st.period = per.dataset.p; save("lii.period", st.period); renderBoards(); return; }
+    if (per) { st.period = per.dataset.p; renderBoards(); return; }
+    const pm = t.closest("#podMetric button");
+    if (pm) { st.pm = pm.dataset.m; st.sort = null; save("lii.pm", st.pm); renderBoards(); return; }
     const so = t.closest("[data-sort]");
     if (so) { st.sort = so.dataset.sort; renderBoards(); return; }
     const rm = t.closest("[data-rm]");
@@ -792,6 +1062,14 @@ function wire() {
     await refreshMe(); enterMain(`Welcome to the family, ${me.name}! 🎉`);
   });
   $("#yesterdayBtn").onclick = openYesterday;
+  $("#raceReplay").onclick = replayRace;
+  $("#notifOn").onclick = notifEnable;
+  $("#notifOff").onclick = notifDisable;
+  $("#notifTest").onclick = async () => {
+    const m = $("#notifMsg"); m.className = "msg"; m.textContent = "Sending…";
+    try { const r = await callNotify({ type: "test" }); m.className = "msg ok"; m.textContent = r.sent ? "✓ Sent. It should pop up in a moment." : "Nothing was sent. Try turning notifications off and on again."; }
+    catch (e) { m.className = "msg err"; m.textContent = "Couldn't reach the notification service."; }
+  };
   $("#paste").addEventListener("input", () => onPasteText($("#paste").value));
   $("#pasteBtn").onclick = async () => {
     try { const txt = await navigator.clipboard.readText(); if (txt) onPasteText(txt); }
@@ -800,6 +1078,8 @@ function wire() {
   $("#save").onclick = saveScore;
   $("#score").addEventListener("keydown", (e) => { if (e.key === "Enter") saveScore(); });
   $("#switchBtn").onclick = async () => {
+    const sub = await currentSub();
+    if (sub) await quiet(sb.rpc("drop_push", { p_endpoint: sub.endpoint }));
     await sb.rpc("leave_device");
     me = null; showWho();
   };
