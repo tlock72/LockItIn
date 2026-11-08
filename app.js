@@ -559,85 +559,31 @@ function renderBoards() {
   }
 }
 
-/* ---------- All games: the race ---------- */
-const RACE_ROW = 54;
-let raceTimer = null;
+/* ---------- All games: days won across every game ---------- */
 function raceOrder(pts) {
   return Object.keys(pts).sort((a, b) => pts[b].total - pts[a].total || (pts[b].draws || 0) - (pts[a].draws || 0) || nameOf(a).localeCompare(nameOf(b)));
 }
 function renderAllGames() {
-  stopRace();
   const days = +st.period, from = days ? daysAgo(days - 1) : null;
-  const { pts, days: byDay } = racePoints(from);
+  const { pts } = racePoints(from);
   const order = raceOrder(pts);
   const rows = order.map((uid) => ({ uid, wins: pts[uid].total, draws: pts[uid].draws }));
   rows.forEach((r, i, a) => (r.rank = i && a[i - 1].wins === r.wins && a[i - 1].draws === r.draws ? a[i - 1].rank : i + 1));
   const any = rows.some((r) => r.wins > 0 || r.draws > 0);
   $("#tab-boards").style.setProperty("--gc", "var(--accent)");
   $("#rankNote").textContent = `Ranked by days won, one for each game won each day; draws 🤝 break ties · ${days ? `last ${days} days` : "all time"}`;
-  // All time shows just the race; the week and month views keep the podium.
-  $("#podium").innerHTML = any && days ? podiumHTML(rows, (r) => `${r.wins} ${r.wins === 1 ? "day" : "days"}${drawsTag(r.draws)}`) : "";
+  $("#podium").innerHTML = any ? podiumHTML(rows, (r) => `${r.wins} ${r.wins === 1 ? "day" : "days"}${drawsTag(r.draws)}`) : "";
 
-  const dates = Object.keys(byDay).sort();
   const avail = games.reduce((n, g) => n + Object.values(byDate(g.id, from)).filter((l) => l.length > 1).length, 0);
   const won = rows.reduce((n, r) => n + r.wins, 0), drawn = avail - won;
-  $("#raceSub").textContent = any
-    ? `${won} ${won === 1 ? "game" : "games"} won${drawn ? ` and ${drawn} drawn` : ""} over ${dates.length} ${dates.length === 1 ? "day" : "days"}`
-    : "";
-  $("#raceReplay").hidden = dates.length < 2;
-  const race = $("#race");
-  race.innerHTML = any ? order.map((uid) => `<div class="rrow${uid === me.id ? " me" : ""}" data-uid="${uid}">
-      <span class="rwho">${av(uid, "m")}<span class="nm">${esc(nameOf(uid))}</span></span>
-      <span class="rtrack"><span class="rbar">${games.map((g) => `<span class="rseg" data-g="${esc(g.id)}" style="--gc:${gc(g.id)}"></span>`).join("")}</span><span class="rval"></span></span>
-    </div>`).join("")
-    : `<div class="empty"><b>No wins yet</b>Win a game on a day when at least two of you play to get on the board.</div>`;
-  if (any) race.style.height = order.length * RACE_ROW + "px"; else race.style.height = "";
-  $("#raceKey").innerHTML = any ? games.map((g) => `<span style="--gc:${gc(g.id)}"><i></i>${esc(g.name)}</span>`).join("") : "";
-  if (any) drawRace(pts);
 
   const totals = Object.fromEntries(games.map((g) => [g.id, order.reduce((n, u) => n + (pts[u].by[g.id] || 0), 0)]));
   $("#allTable").innerHTML = any
     ? `<table class="alltable"><thead><tr><th>#</th><th>Player</th><th>Won</th><th>🤝 Drew</th>${games.map((g) => `<th style="color:${gc(g.id)}">${esc(g.name)}</th>`).join("")}</tr></thead><tbody>
       ${rows.map((r) => `<tr class="${r.uid === me.id ? "me" : ""}"><td class="rank ${MEDAL[r.rank] ? "" : "plain"}">${MEDAL[r.rank] || r.rank}</td><td class="pl">${person(r.uid)}</td><td class="tot">${fmtPts(r.wins)}</td><td>${r.draws || "–"}</td>${games.map((g) => `<td>${pts[r.uid].by[g.id] ? fmtPts(pts[r.uid].by[g.id]) : "–"}</td>`).join("")}</tr>`).join("")}
       <tr class="famrow"><td></td><td class="pl">Family</td><td class="tot">${fmtPts(won)}</td><td>${drawn || "–"}</td>${games.map((g) => `<td>${fmtPts(totals[g.id])}</td>`).join("")}</tr></tbody></table>`
-    : "";
+    : `<div class="empty"><b>No wins ${days ? `in the last ${days} days` : "yet"}</b>Win a game on a day when at least two of you play to get on the board.</div>`;
 }
-// Lay the bars out for a set of points: longest bar on top, each bar split by game.
-function drawRace(pts, label) {
-  const order = raceOrder(pts), max = Math.max(1, ...order.map((u) => pts[u].total));
-  const top = pts[order[0]] || {};
-  order.forEach((uid, i) => {
-    const row = $(`#race .rrow[data-uid="${uid}"]`); if (!row) return;
-    row.style.transform = `translateY(${i * RACE_ROW}px)`;
-    // Everyone level with the leader (same days won and draws) gets the crown.
-    row.classList.toggle("lead", pts[uid].total > 0 && pts[uid].total === top.total && (pts[uid].draws || 0) === (top.draws || 0));
-    for (const seg of row.querySelectorAll(".rseg")) seg.style.width = ((pts[uid].by[seg.dataset.g] || 0) / max) * 100 + "%";
-    row.querySelector(".rval").textContent = fmtPts(pts[uid].total);
-  });
-  $("#raceSub").dataset.live = label || "";
-  if (label) $("#raceSub").textContent = label;
-}
-function stopRace() { if (raceTimer) { clearInterval(raceTimer); raceTimer = null; } const b = $("#raceReplay"); if (b) b.textContent = "▶ Replay the race"; }
-// Replay: run through the days one by one so you can watch the lead change hands.
-function replayRace() {
-  if (raceTimer) { stopRace(); renderAllGames(); return; }
-  const days = +st.period, from = days ? daysAgo(days - 1) : null;
-  const { days: byDay } = racePoints(from);
-  const dates = Object.keys(byDay).sort();
-  if (!dates.length) return;
-  const run = {}; for (const uid of Object.keys(players)) run[uid] = { total: 0, by: {} };
-  drawRace(run, "And they're off…");
-  const step = Math.max(90, Math.min(600, 6000 / dates.length));
-  let i = 0;
-  $("#raceReplay").textContent = "■ Stop";
-  raceTimer = setInterval(() => {
-    if (i >= dates.length) { stopRace(); renderAllGames(); confetti(["#F2B21B", "#FFD95A", "#5B3DF5"]); return; }
-    const d = dates[i++];
-    for (const w of byDay[d]) { const p = (run[w.uid] = run[w.uid] || { total: 0, by: {} }); p.total += w.share; p.by[w.gid] = (p.by[w.gid] || 0) + w.share; }
-    drawRace(run, nice(d, { weekday: "short", month: "short", day: "numeric", year: d.slice(0, 4) === todayStr().slice(0, 4) ? undefined : "numeric" }));
-  }, step);
-}
-
 function renderFamily() {
   $("#meAvatar").innerHTML = av(me.id, "xl");
   $("#meName").textContent = me.name;
@@ -1039,7 +985,6 @@ function wire() {
       const sc = $("#scroller");
       if (nav.dataset.tab === st.tab) { sc.scrollTo({ top: 0, behavior: "smooth" }); return; }
       st.flipped.clear();
-      if (nav.dataset.tab !== "boards") stopRace();
       st.tab = nav.dataset.tab; sc.scrollTop = 0; render(); return;
     }
     const fl = t.closest("[data-flip]");
@@ -1086,7 +1031,6 @@ function wire() {
     await refreshMe(); enterMain(`Welcome to the family, ${me.name}! 🎉`);
   });
   $("#yesterdayBtn").onclick = openYesterday;
-  $("#raceReplay").onclick = replayRace;
   $("#notifOn").onclick = notifEnable;
   $("#notifOff").onclick = notifDisable;
   $("#notifTest").onclick = async () => {
