@@ -66,7 +66,6 @@ function hoHoHo(from) {
   jingle();
   snowBurst(from);
   setTimeout(sleigh, 350);
-  setTimeout(mmPop, 700);
   if (navigator.vibrate) navigator.vibrate([30, 60, 30, 60, 30]);
 }
 function pop(el, text) {
@@ -440,18 +439,17 @@ function tabIcons() {
 
 /* ---------- Mickey & Minnie ----------
    Their picture lives in the private "family" bucket (mickey-minnie.jpg), not in this public repo.
-   app.js signs it, sets --mm and adds body.has-mm; until then the baubles stay hidden. */
-const MM_SAYS = ["Merry Christmas, LockItIns!", "Ho ho ho from Mickey &amp; Minnie!", "Happy holidays, family!", "Good luck today! 🎄", "Candy canes for the winner! 🍬"];
+   app.js signs it, sets --mm and adds body.has-mm; until then the baubles stay hidden.
+   Tapping a bauble makes it twirl. */
 function bauble(cls) {
   const b = document.createElement("button");
   b.type = "button"; b.className = "mm-bauble " + cls;
-  b.setAttribute("aria-label", "Mickey and Minnie say Merry Christmas! Tap to see them.");
+  b.setAttribute("aria-label", "Mickey and Minnie Christmas bauble. Tap to twirl it.");
   b.innerHTML = '<span class="mm-string"></span><span class="mm-cap"></span><span class="mm-ball"></span>';
   b.addEventListener("click", (e) => {
     e.stopPropagation();
     b.classList.remove("twirl"); void b.offsetWidth; b.classList.add("twirl");
     setTimeout(() => b.classList.remove("twirl"), 1000);
-    mmPop();
   });
   return b;
 }
@@ -461,26 +459,6 @@ function addBaubles() {
   const w = $("#screen-who");
   if (w && !w.querySelector(".mm-bauble")) w.appendChild(bauble("mm-who"));
 }
-let mmT = 0, mmSaid = -1;
-function mmPop() {
-  if (!document.body.classList.contains("has-mm")) return;
-  let p = $("#mmPop");
-  if (!p) {
-    p = document.createElement("div");
-    p.id = "mmPop"; p.className = "mm-pop"; p.setAttribute("aria-hidden", "true");
-    p.innerHTML = '<span class="mm-bubble"></span><span class="mm-frame"><span class="mm-pic"></span></span>';
-    p.addEventListener("click", () => { clearTimeout(mmT); p.classList.remove("show"); });
-    document.body.appendChild(p);
-    void p.offsetWidth;
-  }
-  if (!p.classList.contains("show")) {
-    mmSaid = (mmSaid + 1 + Math.floor(Math.random() * (MM_SAYS.length - 1))) % MM_SAYS.length;
-    p.querySelector(".mm-bubble").innerHTML = MM_SAYS[mmSaid];
-  }
-  p.classList.add("show");
-  clearTimeout(mmT); mmT = setTimeout(() => p.classList.remove("show"), 3800);
-}
-
 /* ---------- start ---------- */
 addBanner(); addWhoHo(); addBaubles(); tabIcons(); snow(); lights(); scheduleSleigh();
 new ResizeObserver(lights).observe($(".topbar") || document.body);
@@ -489,5 +467,5 @@ setInterval(refresh, 60 * 1000);
 // A first fly-by shortly after opening.
 setTimeout(sleigh, 2500);
 
-window.xmas = { hoHoHo, mmPop, sleigh, jingle, snowBurst, flakeShape, star, refresh };
+window.xmas = { hoHoHo, sleigh, jingle, snowBurst, flakeShape, star, refresh };
 })();
