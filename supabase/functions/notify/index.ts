@@ -106,16 +106,40 @@ async function onScore(me: string, gameId: string, date: string) {
   }
 
   // 2. Once everyone has played: "Tobey won the day!" to everyone, with the day's podium.
-  if (fam.length > 1 && list.length >= fam.length) {
-    const winners = list.filter((e) => e.rank === 1).map((e) => e.uid);
-    if (await once(`win|${g.id}|${date}|${[...winners].sort().join(",")}`)) {
-      sent += await send(all, {
-        title: winners.length > 1 ? `🤝 ${names(winners.map(nameOf))} drew!` : `🏆 ${names(winners.map(nameOf))} won the day!`,
-        body: `${g.name}: ${list.map((e) => `${MEDAL[e.rank] || "#" + e.rank} ${nameOf(e.uid)} ${fmt(e.s)}`).join(" · ")}`,
-        tag: `win-${g.id}-${date}`,
-        url: "./",
-      });
-    }
+  if (fam.length > 1 && list.length >= fam.length) sent += await announceWin(g, date, list, nameOf, all);
+  return { sent };
+}
+
+// "Tobey won the day!" (or "Mum and Jas drew!") to everyone, with the day's podium. Only once per result.
+async function announceWin(g: { id: string; name: string }, date: string, list: ReturnType<typeof rank>, nameOf: (id: string) => string, all: Sub[]) {
+  if (list.length < 2) return 0;
+  const winners = list.filter((e) => e.rank === 1).map((e) => e.uid);
+  if (!(await once(`win|${g.id}|${date}|${[...winners].sort().join(",")}`))) return 0;
+  return await send(all, {
+    title: winners.length > 1 ? `🤝 ${names(winners.map(nameOf))} drew ${g.name}!` : `🏆 ${names(winners.map(nameOf))} won ${g.name}!`,
+    body: `${list.map((e) => `${MEDAL[e.rank] || "#" + e.rank} ${nameOf(e.uid)} ${fmt(e.s)}`).join(" · ")}`,
+    tag: `win-${g.id}-${date}`,
+    url: "./",
+  });
+}
+
+// Run by a Supabase cron job every hour. Once a day is over (UK time), announce the winner of every game
+// that 2+ people played, even if not everyone did. Days already announced are skipped.
+const ukDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(d);
+async function endOfDay() {
+  const now = Date.now(), dates = [ukDate(new Date(now - 864e5)), ukDate(new Date(now - 2 * 864e5))];
+  const [games, people, day, subs] = await Promise.all([
+    db.from("games").select("id, name, better"),
+    db.from("players").select("id, name"),
+    db.from("scores").select("player_id, game_id, play_date, score").in("play_date", dates),
+    db.from("push_subs").select("endpoint, player_id, sub"),
+  ]);
+  const fam = people.data || [], all = (subs.data || []) as Sub[];
+  const nameOf = (id: string) => fam.find((p) => p.id === id)?.name || "Someone";
+  let sent = 0;
+  for (const date of dates) for (const g of games.data || []) {
+    const rows = ((day.data || []) as (Row & { game_id: string; play_date: string })[]).filter((r) => r.game_id === g.id && r.play_date === date);
+    sent += await announceWin(g, date, rank(rows, g.better === "low"), nameOf, all);
   }
   return { sent };
 }
@@ -147,6 +171,15 @@ async function onMessage(me: string, id: string) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
+    // The hourly cron job proves itself with the secret kept in push_config.
+    const cron = req.headers.get("x-cron-secret");
+    if (cron) {
+      const { data } = await db.from("push_config").select("cron_secret").eq("id", 1).maybeSingle();
+      if (!data?.cron_secret || data.cron_secret !== cron) return json({ error: "Bad cron secret" }, 401);
+      await vapid();
+      return json(await endOfDay());
+    }
+
     // Who's asking: the family member logged in on the calling device.
     const caller = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },

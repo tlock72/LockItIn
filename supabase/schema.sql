@@ -221,6 +221,23 @@ $$;
 revoke all on function save_push(jsonb), drop_push(text) from public, anon;
 grant execute on function save_push(jsonb), drop_push(text) to authenticated;
 
+-- End of day: every hour a cron job asks the "notify" Edge Function to announce the winner of each game
+-- for days that are over (2+ players, even if not everyone played). It proves itself with cron_secret.
+alter table push_config add column if not exists cron_secret text not null
+  default replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+select cron.schedule('lockitin-end-of-day', '5 * * * *', $cron$
+  select net.http_post(
+    url := 'https://fseylrnsbljqdwibkmae.supabase.co/functions/v1/notify',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZzZXlscm5zYmxqcWR3aWJrbWFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQwNzQxOTcsImV4cCI6MjEwOTY1MDE5N30.X1WdukQWuxkH4EJKgaNw-NubHbcsorKJCdJ6ECq43pw',
+      'x-cron-secret', (select cron_secret from public.push_config where id = 1)),
+    body := '{"type":"eod"}'::jsonb)
+  where exists (select 1 from public.push_config where id = 1)
+$cron$);
+
 -- ---------- day chat ----------
 -- Each game has a running chat for each day. A score's own comment (scores.comment) shows in it too.
 -- reply_to: another message's id, or "score:<player id>" to reply to that person's score comment.

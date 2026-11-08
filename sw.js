@@ -1,6 +1,6 @@
 // LockItIn service worker: keeps the app shell available offline and loads fast.
 // Bump VERSION whenever you change app files so phones pick up the update.
-const VERSION = "lockitin-v26";
+const VERSION = "lockitin-v27";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "config.js",
   "manifest.webmanifest", "icons/icon.svg", "icons/glyph.svg", "icons/icon-192.png", "icons/apple-touch-icon.png",
@@ -33,15 +33,9 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : "" }; }
+  // Always show it: iPhones stop delivering pushes to apps that receive them without showing anything,
+  // and a LockItIn left in the app switcher can still claim to be "focused", which used to swallow them.
   e.waitUntil((async () => {
-    // If LockItIn is open and in front of you, the app shows its own pop-up instead.
-    // (Safari wants every push shown, so it always gets the notification.)
-    const ua = self.navigator.userAgent || "";
-    const safari = /Safari/.test(ua) && !/Chrome|Chromium|Edg|Android/.test(ua);
-    if (!safari) {
-      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      if (wins.some((c) => c.focused && c.visibilityState === "visible")) return;
-    }
     await self.registration.showNotification(d.title || "LockItIn", {
       body: d.body || "", tag: d.tag, renotify: !!d.tag, icon: "icons/icon-192.png", data: { url: d.url || "./" },
     });
