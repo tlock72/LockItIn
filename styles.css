@@ -681,6 +681,12 @@ textarea.comment{min-height:64px}
 .rpick button{font-size:20px;line-height:1;background:none;border:0;border-radius:999px;width:36px;height:36px;cursor:pointer;padding:0}
 .rpick button:hover,.rpick button:focus-visible{background:var(--soft)}
 .rpick button[aria-pressed="true"]{background:color-mix(in srgb,var(--gc) 18%,transparent)}
+.rpick .rplus{font-size:22px;font-weight:700;color:var(--muted);background:var(--soft)}
+.rpick.more{align-items:center;gap:6px;padding:4px 4px 4px 6px;border-radius:22px;max-width:100%}
+.remoji{font:inherit;font-size:20px;width:110px;min-width:0;height:36px;border:1px solid var(--line);border-radius:18px;padding:0 12px;background:var(--bg);color:var(--ink)}
+.remoji:focus{outline:2px solid var(--gc);outline-offset:1px}
+.rhint{font-size:12px;font-weight:700;color:var(--muted);flex:1;min-width:0}
+.rpick .rback{font-size:20px;width:30px;height:30px;background:var(--soft);color:var(--ink);flex:none}
 @media (prefers-reduced-motion:no-preference){.rpick{animation:cpop .25s cubic-bezier(.2,1.4,.4,1) both}}
 @media (prefers-reduced-motion:no-preference){.bub.focus .bb{animation:cpop .45s cubic-bezier(.2,1.4,.4,1) both}}
 @keyframes cpop{from{transform:scale(.92)}to{transform:none}}
