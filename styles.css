@@ -210,14 +210,11 @@ input[type="date"]{min-height:52px}
 .gcard .btn{background:var(--gc);box-shadow:0 8px 18px -10px var(--gc)}
 
 /* compact card (short): score and button on one line, avatars and leader underneath */
-.gbody{padding:8px 12px;display:grid;gap:4px 10px;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"score score btn" "emoji emoji emoji" "who lead lead";align-items:center;align-content:space-evenly;min-height:0}
+.gbody{padding:8px 12px;display:grid;gap:4px 10px;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"score score btn" "emoji emoji emoji" "board board board" "lead lead lead";align-items:center;align-content:space-evenly;min-height:0}
 .gbody .mine,.gbody .notyet{grid-area:score;min-width:0}
 .gbody .emojiline{grid-area:emoji;display:none;font-size:22px;letter-spacing:2px;line-height:1.1}
-.gbody .played{grid-area:who}
-.gbody .played > span:last-child{display:none}
-.gbody .played:has(.stackav:empty){display:none}
+.gbody .dpod{grid-area:board}
 .gbody .leader{grid-area:lead}
-.gbody .played:has(.stackav:empty) + .leader{grid-column:1 / -1}
 .gbody .btn{grid-area:btn;width:auto;min-height:36px;padding:6px 14px;font-size:14px;white-space:nowrap}
 .gcard .btn .lg{display:none}
 .mine{display:flex;align-items:baseline;gap:6px;flex-wrap:nowrap}
@@ -257,7 +254,6 @@ input[type="date"]{min-height:52px}
   .mine .pill{font-size:13px;padding:3px 10px}
   .notyet{font-size:clamp(22px,6cqh,30px)}
   .gbody .emojiline{font-size:clamp(22px,6cqh,30px)}
-  .gbody .played > span:last-child{display:inline}
   .gbody .leader{font-size:15px}
   .gbody .btn{width:100%;min-height:50px;font-size:16px;margin-top:auto}
   .gcard .btn .lg{display:inline}
@@ -467,6 +463,10 @@ td.spark svg{display:block}
 .dp .av{order:1}
 .dp .dps{order:3;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dp .dpn,.dp .dpstep{display:none}
+.dp.none{opacity:.5;font-weight:700}
+.dp.none .av{filter:grayscale(1)}
+/* very short card: the leaderboard says who's ahead, so drop the leader line */
+@container (max-height:150px){.gbody .leader{display:none}}
 
 /* medium winner card */
 @container (min-height:175px){
@@ -498,9 +498,21 @@ td.spark svg{display:block}
   .dp .dpn{display:block;order:2;font-size:13px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .dp .dps{order:3;font-family:var(--f-display);font-size:15px;color:var(--gc)}
   .dp.me .dpn{color:var(--gc)}
+  .dp.none .dps{color:var(--muted)}
+  .gbody .dpod{margin:0}
   .dp .dpstep{display:grid;order:4;place-items:center;width:100%;height:calc(var(--h) * clamp(34px,15cqh,84px));border-radius:10px 10px 0 0;
     color:#fff;font-family:var(--f-display);font-size:18px;background:linear-gradient(180deg,color-mix(in srgb,var(--gc) 55%,var(--surface)),var(--gc))}
   .dp.w .dpstep{background:linear-gradient(180deg,var(--gold),color-mix(in srgb,var(--gold) 70%,#000))}
+  .dp.none .dpstep{background:var(--soft)}
+  /* on the result side, the board is a ranked list (the podium is for the winner side) */
+  .gbody .dpod{flex-direction:column;align-items:stretch;gap:5px}
+  .gbody .dp{order:0;flex:none;flex-direction:row;justify-content:flex-start;gap:8px;padding:3px 12px 3px 4px;border-radius:999px;background:var(--soft)}
+  .gbody .dp.w{background:color-mix(in srgb,var(--gold) 28%,var(--surface))}
+  .gbody .dp.me{outline:2px solid color-mix(in srgb,var(--gc) 55%,transparent)}
+  .gbody .dp .dpm{order:0;width:22px;text-align:center;font-size:15px}
+  .gbody .dp .av{--s:28px}
+  .gbody .dp .dpn{flex:1;text-align:left;font-size:14px}
+  .gbody .dp .dpstep{display:none}
 }
 
 .alltable td.tot{font-family:var(--f-display);font-size:17px;color:var(--accent);font-weight:800}

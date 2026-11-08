@@ -392,6 +392,24 @@ function leaderLine(list, done) {
   return `${done ? "🏆" : "👑"} ${who} ${done ? "wins" : "leads"} with ${fmt(top.s)}`;
 }
 
+// Today's leaderboard for one game: everyone who has played, in rank order, then whoever hasn't yet (faded, "–").
+// The same board shows on both sides of a Today card, so it stays put when the day's winner is announced.
+// Short cards show it as a row of chips; tall cards stand it on a podium (2nd, 1st, 3rd, 4th).
+function dayBoard(g, list) {
+  const played = new Set(list.map((e) => e.uid));
+  const rest = Object.keys(players).filter((u) => !played.has(u));
+  const n = list.length;
+  const rows = list.map((e, i) => {
+    const h = n > 1 ? 1 - ((e.rank - 1) / (n - 1)) * 0.7 : 1; // level steps for a draw
+    return `<div role="listitem" class="dp p${i + 1}${e.rank === 1 && n > 1 ? " w" : ""}${e.uid === me.id ? " me" : ""}" title="${esc(nameOf(e.uid))}: ${fmt(e.s)}">
+      <span class="dpm">${MEDAL[e.rank] || "#" + e.rank}</span>${av(e.uid, "s")}<span class="dpn">${esc(nameOf(e.uid))}</span><span class="dps">${fmt(e.s)}</span>
+      <span class="dpstep" style="--h:${h.toFixed(2)}">${e.rank}</span></div>`;
+  }).concat(rest.map((u, i) => `<div role="listitem" class="dp p${n + i + 1} none${u === me.id ? " me" : ""}" title="${esc(nameOf(u))}: not played yet">
+      <span class="dpm">·</span>${av(u, "s")}<span class="dpn">${esc(nameOf(u))}</span><span class="dps">–</span>
+      <span class="dpstep" style="--h:.12"></span></div>`));
+  return `<div class="dpod" role="list" aria-label="Today's ${esc(g.name)} leaderboard: ${n} of ${n + rest.length} played">${rows.join("")}</div>`;
+}
+
 function renderToday() {
   const today = todayStr(), streak = anyStreak(me.id);
   $("#hello").textContent = `${greeting()}, ${me.name}!`;
@@ -399,7 +417,6 @@ function renderToday() {
   const winners = [...new Set(yesterdayResults().flatMap((x) => x.list.filter((e) => e.rank === 1).map((e) => e.uid)))];
   $("#yTease").textContent = winners.length ? `${listNames(winners)} ${winners.length === 1 ? "took the crown" : "took the crowns"}. Tap to see.` : "Nobody played yesterday. Tap to see.";
 
-  const fam = Object.keys(players).length;
   $("#cards").innerHTML = games.map((g) => {
     const { list, done, winners } = dayResult(g, today);
     const mine = list.find((e) => e.uid === me.id);
@@ -417,17 +434,11 @@ function renderToday() {
       const champ = many
         ? `<span class="champav crowned">${winners.slice(0, 3).map((u) => av(u, "l")).join("")}</span>`
         : `<span class="champav crowned">${av(winners[0], "l")}</span>`;
-      const steps = list.map((e, i) => {
-        const h = list.length > 1 ? 1 - ((e.rank - 1) / (list.length - 1)) * 0.7 : 1; // level steps for a draw
-        return `<div class="dp p${i + 1}${e.rank === 1 ? " w" : ""}${e.uid === me.id ? " me" : ""}" title="${esc(nameOf(e.uid))}: ${fmt(e.s)}">
-          <span class="dpm">${MEDAL[e.rank] || "#" + e.rank}</span>${av(e.uid, "s")}<span class="dpn">${esc(nameOf(e.uid))}</span><span class="dps">${fmt(e.s)}</span>
-          <span class="dpstep" style="--h:${h.toFixed(2)}">${e.rank}</span></div>`;
-      }).join("");
       return `<article class="${cls}" style="--gc:${gc(g.id)}">
         <div class="gtop"><h3>${icon(g.id)}${esc(g.name)}</h3><span class="gtop-r">${talk}${flip}</span></div>
         <div class="gwin">
           <div class="champ">${champ}<div class="ctext"><div class="cflag">${many ? "🤝 It's a draw" : "🏆 Won the day"}</div><div class="cname">${esc(listNames(winners))}</div><div class="cscore">${fmt(top.s)}${g.max_score ? `<span class="of"> / ${fmt(g.max_score)}</span>` : ""}</div></div></div>
-          <div class="dpod" aria-label="Today's ${esc(g.name)} podium">${steps}</div>
+          ${dayBoard(g, list)}
         </div>
       </article>`;
     }
@@ -438,7 +449,7 @@ function renderToday() {
           ? `<div class="mine"><span class="big">${fmt(mine.s)}</span>${g.max_score ? `<span class="of">/ ${fmt(g.max_score)}</span>` : ""}<span class="pill on">${outcome(list, me.id) === "draw" ? "🤝 =" : outcome(list, me.id) === "win" ? "👑 #" : "#"}${mine.rank} of ${list.length}</span></div>`
           : `<div class="notyet">Not played yet</div>`}
         ${(() => { const d = mine && scores.get(`${me.id}|${g.id}|${today}`)?.details; return d && d.line ? `<div class="emojiline" title="${esc(tierLine(d.tiers))}">${esc(graphemes(d.line).slice(0, 7).join(""))}</div>` : ""; })()}
-        <div class="played"><span class="stackav">${list.slice(0, 8).map((e) => av(e.uid, "s")).join("")}</span><span>${list.length} of ${fam} played today</span></div>
+        ${dayBoard(g, list)}
         <div class="leader${done ? " won" : ""}">${leaderLine(list, done)}</div>
         <button class="btn" type="button" data-post="${esc(g.id)}">${mine ? `<span class="lg">Update my score</span><span class="sm">Update</span>` : `<span class="lg">Lock in my score</span><span class="sm">Lock in 🔒</span>`}</button>
       </div>
