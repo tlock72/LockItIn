@@ -401,7 +401,7 @@ function renderToday() {
         ? `<span class="champav crowned">${winners.slice(0, 3).map((u) => av(u, "l")).join("")}</span>`
         : `<span class="champav crowned">${av(winners[0], "l")}</span>`;
       const steps = list.map((e, i) => {
-        const h = list.length > 1 ? 1 - (i / (list.length - 1)) * 0.7 : 1;
+        const h = list.length > 1 ? 1 - ((e.rank - 1) / (list.length - 1)) * 0.7 : 1; // level steps for a draw
         return `<div class="dp p${i + 1}${e.rank === 1 ? " w" : ""}${e.uid === me.id ? " me" : ""}" title="${esc(nameOf(e.uid))}: ${fmt(e.s)}">
           <span class="dpm">${MEDAL[e.rank] || "#" + e.rank}</span>${av(e.uid, "s")}<span class="dpn">${esc(nameOf(e.uid))}</span><span class="dps">${fmt(e.s)}</span>
           <span class="dpstep" style="--h:${h.toFixed(2)}">${e.rank}</span></div>`;
@@ -434,12 +434,15 @@ function sortHead(k, label, active) {
   return `<th><button data-sort="${k}" ${active ? 'aria-sort="descending"' : ""}>${label}${active ? " ↓" : ""}</button></th>`;
 }
 // Podium for the top four: 2nd, 1st, 3rd, 4th from left to right.
+// Each step follows the person's rank, so people who are level stand on steps of the same height.
 function podiumHTML(rows, valOf) {
   if (!rows.length) return "";
   const top = rows.slice(0, 4);
-  const slot = (r, place) => r
-    ? `<div class="pod p${place}"><span class="${place === 1 ? "crowned" : ""}">${av(r.uid, place === 1 ? "l" : "m")}</span><span class="nm">${esc(nameOf(r.uid))}</span><span class="val">${valOf(r)}</span><div class="step">${place}</div></div>`
-    : `<div class="pod p${place} empty"><span class="nm muted">–</span><div class="step">${place}</div></div>`;
+  const slot = (r, place) => {
+    if (!r) return `<div class="pod p${place} empty"><span class="nm muted">–</span><div class="step">${place}</div></div>`;
+    const k = Math.min(r.rank || place, 4);
+    return `<div class="pod p${k}"><span class="${k === 1 ? "crowned" : ""}">${av(r.uid, k === 1 ? "l" : "m")}</span><span class="nm">${esc(nameOf(r.uid))}</span><span class="val">${valOf(r)}</span><div class="step">${k}</div></div>`;
+  };
   const order = top.length >= 4 ? [2, 1, 3, 4] : [2, 1, 3];
   return `<div class="podium-in n${order.length}">${order.map((p) => slot(top[p - 1], p)).join("")}</div>`;
 }
@@ -572,7 +575,8 @@ function renderAllGames() {
   const any = rows.some((r) => r.wins > 0 || r.draws > 0);
   $("#tab-boards").style.setProperty("--gc", "var(--accent)");
   $("#rankNote").textContent = `Ranked by days won, one for each game won each day; draws 🤝 break ties · ${days ? `last ${days} days` : "all time"}`;
-  $("#podium").innerHTML = any ? podiumHTML(rows, (r) => `${r.wins} ${r.wins === 1 ? "day" : "days"}${drawsTag(r.draws)}`) : "";
+  // All time shows just the race; the week and month views keep the podium.
+  $("#podium").innerHTML = any && days ? podiumHTML(rows, (r) => `${r.wins} ${r.wins === 1 ? "day" : "days"}${drawsTag(r.draws)}`) : "";
 
   const dates = Object.keys(byDay).sort();
   const avail = games.reduce((n, g) => n + Object.values(byDate(g.id, from)).filter((l) => l.length > 1).length, 0);
