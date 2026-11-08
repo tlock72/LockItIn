@@ -1,6 +1,6 @@
 // LockItIn service worker: keeps the app shell available offline and loads fast.
 // Bump VERSION whenever you change app files so phones pick up the update.
-const VERSION = "lockitin-v30";
+const VERSION = "lockitin-v31";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "config.js",
   "manifest.webmanifest", "icons/icon.svg", "icons/glyph.svg", "icons/icon-192.png", "icons/apple-touch-icon.png",
@@ -22,8 +22,10 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return; // Supabase and fonts go straight to the network
   // Network first so updates show up right away; fall back to the cached copy when offline.
+  // "no-cache" makes the browser check with the server every time, instead of reusing its own
+  // HTTP-cached copy (GitHub Pages lets that be up to 10 minutes old), so updates show at once.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: "no-cache" })
       .then((res) => { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); return res; })
       .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match("index.html")))
   );
