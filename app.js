@@ -61,6 +61,7 @@ const photoUrls = {};
 const photoSrc = (u) => (!u ? "" : u.startsWith("storage:") ? photoUrls[u.slice(8)] || "" : /^https:\/\//.test(u) || /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(u) ? u : "");
 async function resolvePhotos() {
   const want = new Set(["logo.jpg"]);
+  if (XMAS) want.add("mickey-minnie.jpg"); // Christmas edition: Mickey & Minnie baubles
   for (const p of Object.values(players)) if (p.avatar_url && p.avatar_url.startsWith("storage:")) want.add(p.avatar_url.slice(8));
   const missing = [...want].filter((f) => !photoUrls[f]);
   if (missing.length) {
@@ -72,6 +73,10 @@ async function resolvePhotos() {
   if (photoUrls["logo.jpg"]) {
     document.documentElement.style.setProperty("--logo", `url("${photoUrls["logo.jpg"]}")`);
     document.body.classList.add("has-logo");
+  }
+  if (photoUrls["mickey-minnie.jpg"]) {
+    document.documentElement.style.setProperty("--mm", `url("${photoUrls["mickey-minnie.jpg"]}")`);
+    document.body.classList.add("has-mm");
   }
 }
 

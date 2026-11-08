@@ -183,3 +183,61 @@ body.xmas{background:var(--bg)}
 @media (prefers-reduced-motion:no-preference){.music-stop:not([hidden]){animation:msIn .25s ease-out}}
 @keyframes msIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
 @media (min-width:900px){.music-stop{bottom:28px}}
+
+/* ---------- Mickey & Minnie: glass baubles and a pop-up Christmas card ----------
+   Hidden until app.js has signed the picture (body.has-mm). */
+.mm-bauble{display:none;position:relative;flex:none;border:0;background:none;padding:0;cursor:pointer;
+  --s:54px;--str:16px;width:var(--s);height:calc(var(--str) + 8px + var(--s));transform-origin:50% 0;-webkit-tap-highlight-color:transparent}
+.has-mm .mm-bauble{display:block}
+.mm-string{position:absolute;left:50%;top:0;width:2px;margin-left:-1px;height:calc(var(--str) + 2px);background:linear-gradient(#C9971C,#FFD86B)}
+.mm-cap{position:absolute;left:50%;top:var(--str);width:calc(var(--s) * .3);height:10px;transform:translate(-50%,-3px);border-radius:3px 3px 2px 2px;z-index:1;
+  background:linear-gradient(90deg,#A8770F,#FFE08A 40%,#E8A317 70%,#A8770F);box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
+.mm-ball{position:absolute;left:0;bottom:0;width:var(--s);height:var(--s);border-radius:50%;overflow:hidden;
+  background:var(--mm) 46% 34%/150% auto no-repeat,#2B78C9;
+  box-shadow:0 0 0 3px #FFD24A,0 0 0 5px color-mix(in srgb,#E8A317 60%,transparent),0 10px 18px -6px rgba(0,0,0,.45)}
+/* glassy shine */
+.mm-ball::after{content:"";position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle at 30% 24%,rgba(255,255,255,.85) 0 6%,rgba(255,255,255,0) 20%),
+    radial-gradient(circle at 72% 80%,rgba(255,255,255,.35) 0 3%,rgba(255,255,255,0) 9%),
+    radial-gradient(circle at 50% 50%,transparent 58%,rgba(10,30,70,.38) 100%)}
+.mm-bauble:focus-visible{outline:none}
+.mm-bauble:focus-visible .mm-ball{box-shadow:0 0 0 3px #FFD24A,0 0 0 6px var(--accent)}
+@media (prefers-reduced-motion:no-preference){
+  .mm-bauble{animation:mmSwing 3.8s ease-in-out infinite}
+  .mm-bauble.twirl{animation:mmJolt 1s cubic-bezier(.3,1.4,.5,1)}
+  .mm-bauble.twirl .mm-ball{animation:mmTwirl .9s ease-in-out}
+}
+@keyframes mmSwing{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+@keyframes mmJolt{0%{transform:rotate(0)}20%{transform:rotate(-22deg)}45%{transform:rotate(16deg)}70%{transform:rotate(-8deg)}100%{transform:rotate(-6deg)}}
+@keyframes mmTwirl{0%{transform:scale(1)}50%{transform:scale(1.14)}100%{transform:scale(1)}}
+
+/* Today: hangs at the end of the greeting, its string running up to the top bar's fairy lights */
+.xmas #tab-today .hello{position:relative}
+.has-mm #tab-today .hello .stack{padding-right:60px}
+.xmas #tab-today .hello .mm-today{position:absolute;right:4px;top:-18px;z-index:2;--str:14px;--s:52px}
+@media (min-width:768px){.has-mm #tab-today .hello .stack{padding-right:96px}.xmas #tab-today .hello .mm-today{--s:70px;--str:16px;right:16px}}
+/* "Who's playing?": a big one hanging from the top of the screen */
+.mm-who{position:absolute;top:0;right:max(18px,calc(50% - 340px));--s:74px;--str:calc(env(safe-area-inset-top,0px) + 30px)}
+@media (min-width:768px){.mm-who{--s:110px;--str:calc(env(safe-area-inset-top,0px) + 44px)}}
+@media (max-width:360px){.mm-who{--s:60px}}
+
+/* the pop-up card: Mickey & Minnie rise from the bottom and wish everyone a merry Christmas */
+.mm-pop{position:fixed;z-index:66;left:50%;bottom:calc(var(--tabbar) + env(safe-area-inset-bottom,0px) + 14px);display:grid;justify-items:center;gap:8px;
+  transform:translate(-50%,calc(100% + var(--tabbar) + 60px));transition:transform .45s cubic-bezier(.5,0,.75,0);pointer-events:none;cursor:pointer}
+.mm-pop.show{transform:translate(-50%,0);transition:transform .6s cubic-bezier(.3,1.5,.5,1);pointer-events:auto}
+.mm-frame{display:block;width:clamp(150px,42vw,210px);aspect-ratio:1;border-radius:50%;padding:7px;
+  background:repeating-conic-gradient(from 8deg,var(--red) 0 15deg,#fff 15deg 30deg);
+  box-shadow:0 0 0 3px #FFD24A,0 22px 40px -14px rgba(0,0,0,.55)}
+.mm-pic{display:block;width:100%;height:100%;border-radius:50%;background:var(--mm) 50% 40%/cover no-repeat,#2B78C9;box-shadow:inset 0 0 0 3px rgba(255,255,255,.7)}
+.mm-bubble{position:relative;max-width:min(80vw,320px);padding:9px 16px;border-radius:18px;background:#fff;color:#2A1518;text-align:center;
+  font-family:var(--f-display);font-weight:800;font-size:17px;line-height:1.2;box-shadow:0 10px 24px -10px rgba(0,0,0,.4),inset 0 0 0 2px #FFD24A}
+.mm-bubble::after{content:"";position:absolute;left:50%;bottom:-8px;width:16px;height:16px;margin-left:-8px;background:#fff;transform:rotate(45deg);
+  box-shadow:2px 2px 0 0 #FFD24A;border-radius:0 0 4px 0}
+@media (prefers-reduced-motion:no-preference){.mm-pop.show .mm-frame{animation:mmWave 1.6s ease-in-out .5s 2}}
+@keyframes mmWave{0%,100%{transform:rotate(0)}25%{transform:rotate(-5deg)}75%{transform:rotate(5deg)}}
+@media (prefers-reduced-motion:reduce){.mm-pop,.mm-pop.show{transition:opacity .3s}.mm-pop{opacity:0;transform:translate(-50%,0)}.mm-pop.show{opacity:1}}
+/* no tab bar on the login screen or on wide screens */
+body:has(#screen-who:not([hidden])) .mm-pop{bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
+@media (min-width:900px){.mm-pop{bottom:calc(env(safe-area-inset-bottom,0px) + 28px)}}
+/* while the jingle plays, the card sits above the "tap to stop the music" button */
+body:has(.music-stop:not([hidden])) #mmPop{bottom:calc(var(--tabbar) + env(safe-area-inset-bottom,0px) + 136px)}
