@@ -21,7 +21,7 @@
 }}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5;font-weight:600;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.5;font-weight:600;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 body{min-height:100dvh}
 h1,h2,h3{font-family:var(--f-display);margin:0;letter-spacing:-.015em;text-wrap:balance;font-weight:800}
 h1{font-size:clamp(28px,6vw,40px);line-height:1.05}
@@ -116,13 +116,22 @@ body.has-logo .hero-photo{background:var(--logo) center/cover no-repeat}
 .person .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* shell */
-.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
+.topbar{position:relative;flex:none;z-index:20;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top,0px)}
 .topbar-inner{max-width:1120px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px))}
 .topnav{display:none;gap:4px;background:var(--soft);padding:4px;border-radius:999px}
 .topnav button{border:0;background:none;color:var(--muted);font-weight:800;font-size:15px;padding:8px 18px;border-radius:999px;cursor:pointer}
 .topnav button[aria-current="page"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
 .me-btn{border:0;background:none;padding:0;cursor:pointer;border-radius:50%}
-main{max-width:1120px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-right,0px)) calc(var(--tabbar) + env(safe-area-inset-bottom,0px) + 28px) max(16px,env(safe-area-inset-left,0px))}
+/* App shell: the top bar stays frozen and only <main> scrolls, on every tab, so switching tabs
+   never swaps scroll containers (that swap was the jump/glitch) and pull-to-refresh has one place to live. */
+body:has(#main:not([hidden])){height:100dvh;overflow:hidden;overscroll-behavior:none}
+#main{position:relative;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+main{flex:1;min-height:0;width:100%;overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;
+  padding:18px max(16px,env(safe-area-inset-right,0px),calc(50% - 544px)) calc(var(--tabbar) + env(safe-area-inset-bottom,0px) + 28px) max(16px,env(safe-area-inset-left,0px),calc(50% - 544px))}
+main.pulling{will-change:transform}
+main.springing{transition:transform .42s cubic-bezier(.2,1.4,.4,1)}
+@media (prefers-reduced-motion:no-preference){.tabpane:not([hidden]){animation:panein .2s ease-out}}
+@keyframes panein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .tabpane{display:grid;gap:18px}
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(3,1fr);
   padding:0 env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);
@@ -148,7 +157,7 @@ main{max-width:1120px;margin:0 auto;padding:18px max(16px,env(safe-area-inset-ri
 .field{display:grid;gap:6px;min-width:0}
 input,textarea,select{font:inherit;font-size:16px;font-weight:700;color:var(--ink);background:var(--bg);border:2px solid var(--line);border-radius:12px;padding:11px 13px;width:100%;min-width:0}
 input:focus,textarea:focus,select:focus{border-color:var(--accent);outline:none}
-textarea{min-height:96px;resize:vertical;font-size:15px;font-weight:600}
+textarea{min-height:96px;resize:vertical;font-size:16px;font-weight:600}
 input.score{font-family:var(--f-display);font-size:26px;font-weight:800}
 input[type="date"]{min-height:52px}
 .btn{font-weight:800;font-size:16px;padding:13px 20px;border-radius:14px;border:0;background:var(--accent);color:var(--accent-ink);cursor:pointer;min-height:50px;box-shadow:0 6px 16px -8px var(--accent)}
@@ -179,8 +188,6 @@ input[type="date"]{min-height:52px}
 /* Today fills the screen exactly, on every device: greeting and Yesterday on top,
    the game cards share whatever height is left. Each card picks its layout from its own size
    (container queries), so a short phone card is compact and a tall tablet/desktop card is roomy. */
-#main:has(#tab-today:not([hidden])){height:100dvh;display:flex;flex-direction:column}
-#main:has(#tab-today:not([hidden])) > main{flex:1;min-height:0;width:100%;overflow-y:auto}
 #tab-today{min-height:100%;grid-template-rows:auto auto minmax(0,1fr)}
 
 .cards{display:grid;gap:12px;grid-auto-rows:minmax(112px,1fr);min-height:0}
@@ -522,3 +529,49 @@ td.spark svg{display:block}
 .grid td.draw{color:var(--gc);font-weight:800}
 .grid td.draw::after{content:" 🤝";font-size:11px}
 .pod .val small.drew{font-size:.7em;color:var(--muted);font-weight:700;white-space:nowrap}
+
+/* pull to refresh: a padlock that unlocks as you pull, the three game colours charge up around it,
+   then it snaps shut ("lock it in"), the dots orbit while scores load, and burst out when fresh.
+   Transforms and opacity only, so it stays smooth on phones. */
+.ptr{position:absolute;left:0;right:0;top:var(--ptr-top,60px);z-index:15;height:0;display:flex;flex-direction:column;align-items:center;pointer-events:none;
+  --p:0;opacity:0;transform:translateY(calc(var(--d,0px) - 73px))}
+.ptr.on{opacity:1}
+.ptr.springing{transition:transform .42s cubic-bezier(.2,1.4,.4,1),opacity .3s}
+.ptr-orb{position:relative;width:46px;height:46px;flex:none;display:grid;place-items:center}
+.ptr-lock{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:#fff;
+  box-shadow:0 8px 20px -8px var(--accent);transform:scale(calc(.55 + var(--p) * .45)) rotate(calc((1 - var(--p)) * -140deg))}
+.ptr-lock svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.ptr-lock rect{fill:currentColor}
+.ptr-key{fill:var(--accent);stroke:none}
+.ptr-shackle{transform:translateY(calc(var(--p) * -4px)) rotate(calc(var(--p) * -22deg));transform-origin:16px 11px}
+.ptr-dot{position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px;border-radius:50%;transform:rotate(var(--a)) translateY(-28px) scale(0);transition:transform .18s cubic-bezier(.3,1.6,.5,1)}
+.d1{--a:-60deg;background:var(--krillion,#ff4fa3)}
+.d2{--a:0deg;background:var(--maptap,#22c55e)}
+.d3{--a:60deg;background:var(--timeguessr,#ff8a1f)}
+.ptr.c1 .d1,.ptr.c2 .d2,.ptr.c3 .d3{transform:rotate(var(--a)) translateY(-28px) scale(1)}
+.ptr-label{margin-top:6px;font-size:12px;font-weight:800;color:var(--muted);white-space:nowrap;opacity:calc(var(--p) * 1.4 - .3)}
+.ptr.ready .ptr-lock{animation:ptrready .3s}
+.ptr.ready .ptr-label{color:var(--accent)}
+@keyframes ptrready{50%{transform:scale(1.18)}}
+/* release: the shackle slams shut, the lock does a little "click" wiggle, dots orbit */
+.ptr.busy{--p:1}
+.ptr.busy .ptr-shackle{transform:none;animation:ptrslam .34s cubic-bezier(.3,1.8,.5,1)}
+.ptr.busy .ptr-lock{animation:ptrclick .5s ease-out}
+.ptr.busy .ptr-dot{transition:none;animation:ptrorbit 1s linear infinite}
+.ptr.busy .d2{animation-delay:-.333s}.ptr.busy .d3{animation-delay:-.667s}
+.ptr.busy .ptr-label{opacity:1;color:var(--ink)}
+@keyframes ptrslam{0%{transform:translateY(-5px) rotate(-22deg)}100%{transform:none}}
+@keyframes ptrclick{0%{transform:scale(1)}25%{transform:scale(.86) rotate(-10deg)}55%{transform:scale(1.12) rotate(8deg)}100%{transform:scale(1)}}
+@keyframes ptrorbit{from{transform:rotate(0deg) translateY(-28px) scale(1)}to{transform:rotate(360deg) translateY(-28px) scale(1)}}
+/* done: dots fly out like fireworks, lock gives a happy bounce */
+.ptr.done{--p:1}
+.ptr.done .ptr-shackle{transform:none}
+.ptr.done .ptr-lock{animation:ptrhappy .5s cubic-bezier(.3,1.7,.5,1)}
+.ptr.done .ptr-dot{transition:none;animation:ptrburst .55s ease-out forwards}
+.ptr.done .ptr-label{opacity:1;color:var(--ok)}
+@keyframes ptrhappy{0%{transform:scale(.8)}50%{transform:scale(1.25) rotate(-8deg)}100%{transform:scale(1)}}
+@keyframes ptrburst{from{transform:rotate(var(--a)) translateY(-28px) scale(1);opacity:1}to{transform:rotate(calc(var(--a) * 2.2)) translateY(-66px) scale(.2);opacity:0}}
+.ptr.fail .ptr-label{opacity:1;color:var(--bad,#e11d48)}
+.ptr.fail .ptr-lock{animation:ptrshake .4s}
+@keyframes ptrshake{25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+@media (prefers-reduced-motion:reduce){.ptr *{animation:none!important}}

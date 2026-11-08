@@ -1029,9 +1029,12 @@ function wire() {
     const nav = t.closest("[data-tab]");
     if (nav) {
       // Leaving Today turns every card back to the winner side; the logo always goes home to Today.
-      if (nav.dataset.tab !== st.tab) st.flipped.clear();
+      // Tapping the tab you're already on just glides back to the top (no re-render, no flash).
+      const sc = $("#scroller");
+      if (nav.dataset.tab === st.tab) { sc.scrollTo({ top: 0, behavior: "smooth" }); return; }
+      st.flipped.clear();
       if (nav.dataset.tab !== "boards") stopRace();
-      st.tab = nav.dataset.tab; render(); window.scrollTo(0, 0); return;
+      st.tab = nav.dataset.tab; sc.scrollTop = 0; render(); return;
     }
     const fl = t.closest("[data-flip]");
     if (fl) {
@@ -1161,11 +1164,81 @@ function wire() {
     adminDirty = false; adminMsg("Games saved."); loadAll();
   };
 
+  wirePull();
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && me && !$("#main").hidden) loadAll().catch(() => {}); });
+}
+
+/* ---------- pull to refresh ---------- */
+// Drag down at the top of any tab: the padlock unlocks and the three game dots charge up;
+// let go past the line and it snaps shut, the dots orbit while scores reload, then burst.
+function wirePull() {
+  const sc = $("#scroller"), ptr = $("#ptr"), label = $("#ptrLabel");
+  const LINE = 80, HOLD = 84, MAX = 140;
+  let y0 = 0, x0 = 0, d = 0, mode = "", busy = false, raf = 0;
+  const paint = () => {
+    raf = 0;
+    const p = Math.min(1, d / LINE);
+    sc.style.transform = d ? `translate3d(0,${d}px,0)` : "";
+    ptr.style.setProperty("--d", d + "px"); ptr.style.setProperty("--p", p.toFixed(3));
+    if (busy) return; // while refreshing, the lock's own animation owns the classes and label
+    ptr.classList.toggle("c1", p > 0.3); ptr.classList.toggle("c2", p > 0.6); ptr.classList.toggle("c3", p >= 1);
+    const ready = p >= 1;
+    if (ready !== ptr.classList.contains("ready")) { ptr.classList.toggle("ready", ready); label.textContent = ready ? "Let go to lock it in 🔒" : "Pull to refresh"; }
+  };
+  const set = (v) => { d = v; if (!raf) raf = requestAnimationFrame(paint); };
+  const spring = (to) => {
+    sc.classList.add("springing"); ptr.classList.add("springing"); set(to);
+    setTimeout(() => { sc.classList.remove("springing"); ptr.classList.remove("springing"); }, 450);
+  };
+  const reset = () => { ptr.className = "ptr"; sc.classList.remove("pulling"); label.textContent = "Pull to refresh"; };
+
+  sc.addEventListener("touchstart", (e) => {
+    if (busy || e.touches.length !== 1 || sc.scrollTop > 0) { mode = "no"; return; }
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; mode = "";
+  }, { passive: true });
+  sc.addEventListener("touchmove", (e) => {
+    if (mode === "no" || busy) return;
+    const dy = e.touches[0].clientY - y0, dx = e.touches[0].clientX - x0;
+    if (!mode) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      // sideways swipes (tables, the 14-day grid) and upward scrolls are left alone
+      if (dy <= 0 || Math.abs(dx) > dy || sc.scrollTop > 0) { mode = "no"; return; }
+      mode = "pull"; sc.classList.add("pulling");
+      ptr.style.setProperty("--ptr-top", sc.offsetTop + "px"); ptr.classList.add("on");
+    }
+    e.preventDefault();
+    set(dy <= 0 ? 0 : MAX * (1 - Math.exp(-dy / (MAX * 1.2)))); // gets heavier the further you pull
+  }, { passive: false });
+  const end = async () => {
+    if (mode !== "pull") { mode = ""; return; }
+    mode = "";
+    if (d < LINE) { spring(0); setTimeout(() => { if (!busy && !d) reset(); }, 420); return; }
+    busy = true; spring(HOLD);
+    ptr.classList.remove("ready"); ptr.classList.add("busy");
+    label.textContent = "Locking in fresh scores…"; $("#ptrStatus").textContent = "Refreshing";
+    navigator.serviceWorker?.getRegistration?.().then((r) => r && r.update()).catch(() => {});
+    let ok = true;
+    try { await Promise.all([loadAll(), new Promise((r) => setTimeout(r, 900))]); } catch (err) { ok = false; }
+    ptr.classList.remove("busy"); ptr.classList.add(ok ? "done" : "fail");
+    label.textContent = ok ? "Fresh! ✨" : "Couldn't refresh. Try again?";
+    $("#ptrStatus").textContent = ok ? "Scores up to date" : "Couldn't refresh";
+    setTimeout(() => {
+      spring(0);
+      setTimeout(() => { busy = false; reset(); }, 430);
+    }, ok ? 650 : 1300);
+  };
+  sc.addEventListener("touchend", end);
+  sc.addEventListener("touchcancel", end);
 }
 
 /* ---------- boot ---------- */
 async function boot() {
+  // On the home-screen app, behave like a real app: no pinch, double-tap or tap-a-box zooming.
+  if (installed()) {
+    document.documentElement.classList.add("standalone");
+    $('meta[name="viewport"]').setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover");
+    for (const ev of ["gesturestart", "gesturechange"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  }
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   const q = new URLSearchParams(location.search);
   const shared = [q.get("title"), q.get("text"), q.get("url")].filter(Boolean).join("\n");

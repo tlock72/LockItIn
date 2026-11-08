@@ -67,7 +67,16 @@
     </div>
   </header>
 
-  <main>
+  <div class="ptr" id="ptr" aria-hidden="true">
+    <div class="ptr-orb">
+      <span class="ptr-dot d1"></span><span class="ptr-dot d2"></span><span class="ptr-dot d3"></span>
+      <span class="ptr-lock"><svg viewBox="0 0 24 24"><path class="ptr-shackle" d="M8 11V8a4 4 0 0 1 8 0v3"/><rect x="5" y="11" width="14" height="10" rx="3"/><circle class="ptr-key" cx="12" cy="16" r="1.6"/></svg></span>
+    </div>
+    <span class="ptr-label" id="ptrLabel">Pull to refresh</span>
+  </div>
+  <div class="vh" id="ptrStatus" role="status" aria-live="polite"></div>
+
+  <main id="scroller">
     <!-- TODAY -->
     <section id="tab-today" class="tabpane">
       <div class="hello">
