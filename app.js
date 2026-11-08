@@ -605,10 +605,12 @@ function renderAllGames() {
 // Lay the bars out for a set of points: longest bar on top, each bar split by game.
 function drawRace(pts, label) {
   const order = raceOrder(pts), max = Math.max(1, ...order.map((u) => pts[u].total));
+  const top = pts[order[0]] || {};
   order.forEach((uid, i) => {
     const row = $(`#race .rrow[data-uid="${uid}"]`); if (!row) return;
     row.style.transform = `translateY(${i * RACE_ROW}px)`;
-    row.classList.toggle("lead", i === 0 && pts[uid].total > 0);
+    // Everyone level with the leader (same days won and draws) gets the crown.
+    row.classList.toggle("lead", pts[uid].total > 0 && pts[uid].total === top.total && (pts[uid].draws || 0) === (top.draws || 0));
     for (const seg of row.querySelectorAll(".rseg")) seg.style.width = ((pts[uid].by[seg.dataset.g] || 0) / max) * 100 + "%";
     row.querySelector(".rval").textContent = fmtPts(pts[uid].total);
   });
