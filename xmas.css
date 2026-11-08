@@ -138,3 +138,37 @@ body.xmas{background:var(--bg)}
   .hohoho .ho-sub{font-size:16px}
   .holly{width:84px;height:68px}
 }
+
+/* wide screens (iPad landscape, desktop): Ho Ho Ho and Yesterday share one row,
+   so the game cards keep enough height for their roomy layout instead of squashing */
+@media (min-width:860px), (min-width:600px) and (orientation:landscape){
+  .xmas #tab-today{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr)}
+  .xmas #tab-today > .hello,.xmas #tab-today > .cards{grid-column:1 / -1}
+  .xmas #tab-today > .hohoho{grid-column:1;grid-row:2}
+  .xmas #tab-today > .yesterday{grid-column:2;grid-row:2;height:100%}
+}
+@media (min-width:860px) and (max-width:1100px){
+  .hohoho .ho-words{font-size:52px}
+  .hohoho .santa{width:76px;height:76px}
+}
+
+/* short phones (and phones on their side): a slim Ho Ho Ho strip, so the game cards keep their room */
+@media (max-width:600px) and (max-height:800px), (max-height:460px){
+  .hohoho{padding:6px 12px 12px;gap:10px}
+  .hohoho .santa{width:42px;height:42px}
+  .hohoho .ho-text{display:flex;align-items:center;gap:10px}
+  .hohoho .ho-words{font-size:30px}
+  .hohoho .ho-sub{margin-top:0;font-size:12px;white-space:normal;line-height:1.2;display:block}
+  .hohoho .ho-sub b{font-size:15px}
+  .holly{width:46px;height:38px}
+}
+/* phone on its side: Ho Ho Ho (as the greeting) and Yesterday share one slim row above the cards */
+@media (max-height:460px){
+  .xmas #tab-today{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .xmas #tab-today > .hello{display:none}
+  .xmas #tab-today > .hohoho{grid-column:1;grid-row:1}
+  .xmas #tab-today > .yesterday{grid-column:2;grid-row:1;height:100%}
+  .xmas #tab-today > .cards{grid-column:1 / -1;grid-row:2}
+  .hohoho .ho-words{font-size:26px}
+  .xmas .yesterday .ytext span{display:none}
+}
