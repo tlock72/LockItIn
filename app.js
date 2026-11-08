@@ -741,6 +741,8 @@ async function liveVersion() {
 }
 function reloadIfSafe() {
   if ($$(".sheet-wrap").some((w) => !w.hidden)) return;
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return; // never reload under someone typing
   location.reload();
 }
 async function checkForUpdate() {
@@ -762,6 +764,9 @@ function watchForUpdates() {
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkForUpdate(); });
   window.addEventListener("pageshow", (e) => { if (e.persisted) checkForUpdate(); });
   window.addEventListener("focus", checkForUpdate);
+  // A page left open on screen (a desktop tab, an iPad on the table) checks now and then too,
+  // so a new version shows up without anyone switching away and back.
+  setInterval(() => { if (document.visibilityState === "visible") checkForUpdate(); }, 90000);
 }
 
 function openPost(gid, text) {
