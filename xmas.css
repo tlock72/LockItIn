@@ -86,7 +86,7 @@ body.xmas{background:var(--bg)}
 @keyframes belly{0%,100%{transform:none}15%,45%,75%{transform:rotate(-9deg) translateY(-4px) scale(1.06)}30%,60%,90%{transform:rotate(9deg) translateY(1px) scale(.98,1.04)}}
 
 /* Today has one more row now: greeting, Ho Ho Ho, yesterday, cards */
-.xmas #tab-today{grid-template-rows:auto auto auto minmax(0,1fr)}
+.xmas #tab-today{grid-template-rows:auto auto auto auto minmax(0,1fr)}
 @media (max-width:420px){.santa{width:62px;height:62px}.hohoho{padding:10px 14px 15px;gap:10px}}
 
 /* Ho Ho Ho on the "Who's playing?" screen */
@@ -142,10 +142,11 @@ body.xmas{background:var(--bg)}
 /* wide screens (iPad landscape, desktop): Ho Ho Ho and Yesterday share one row,
    so the game cards keep enough height for their roomy layout instead of squashing */
 @media (min-width:860px), (min-width:600px) and (orientation:landscape){
-  .xmas #tab-today{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr)}
+  .xmas #tab-today{grid-template-columns:minmax(0,1.25fr) minmax(0,1.2fr) minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr)}
   .xmas #tab-today > .hello,.xmas #tab-today > .cards{grid-column:1 / -1}
   .xmas #tab-today > .hohoho{grid-column:1;grid-row:2}
-  .xmas #tab-today > .yesterday{grid-column:2;grid-row:2;height:100%}
+  .xmas #tab-today > .weekrace{grid-column:2;grid-row:2;height:100%}
+  .xmas #tab-today > .yesterday{grid-column:3;grid-row:2;height:100%}
 }
 @media (min-width:860px) and (max-width:1100px){
   .hohoho .ho-words{font-size:52px}
@@ -164,10 +165,11 @@ body.xmas{background:var(--bg)}
 }
 /* phone on its side: Ho Ho Ho (as the greeting) and Yesterday share one slim row above the cards */
 @media (max-height:460px){
-  .xmas #tab-today{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .xmas #tab-today{grid-template-columns:minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
   .xmas #tab-today > .hello{display:none}
   .xmas #tab-today > .hohoho{grid-column:1;grid-row:1}
-  .xmas #tab-today > .yesterday{grid-column:2;grid-row:1;height:100%}
+  .xmas #tab-today > .weekrace{grid-column:2;grid-row:1;height:100%}
+  .xmas #tab-today > .yesterday{grid-column:3;grid-row:1;height:100%}
   .xmas #tab-today > .cards{grid-column:1 / -1;grid-row:2}
   .hohoho .ho-words{font-size:26px}
   .xmas .yesterday .ytext span{display:none}

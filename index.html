@@ -85,6 +85,8 @@
         <div class="stack tight"><h1 id="hello"></h1><p class="muted" id="helloSub"></p></div>
       </div>
 
+      <button class="weekrace" id="weekRace" type="button" aria-label="This week's race: open the weekly leaderboard"></button>
+
       <button class="yesterday" id="yesterdayBtn" type="button">
         <span class="crown" aria-hidden="true">👑</span>
         <span class="ytext"><b>Yesterday's winners</b><span id="yTease">Tap to reveal</span></span>
@@ -97,14 +99,20 @@
     <!-- BOARDS -->
     <section id="tab-boards" class="tabpane" hidden>
       <div class="gamepicker" id="gamePicker" role="tablist" aria-label="Game"></div>
+      <div class="weekbar" id="weekBar">
+        <button class="wkarrow" id="wkPrev" type="button" aria-label="Previous week">‹</button>
+        <div class="wkmid" aria-live="polite"><b id="wkTitle">This week</b><span id="wkSub"></span></div>
+        <button class="wkarrow" id="wkNext" type="button" aria-label="Next week">›</button>
+      </div>
       <div class="row between wrap">
-        <div class="seg" id="period" role="group" aria-label="Period">
-          <button data-p="0">All time</button><button data-p="30">Month</button><button data-p="7">Week</button>
+        <div class="perlinks" id="period" role="group" aria-label="Period">
+          <button data-p="week">Weekly</button><button data-p="month">Month</button><button data-p="year">Year</button><button data-p="all">All time</button>
         </div>
         <div class="seg" id="podMetric" role="group" aria-label="Rank the podium by">
           <button data-m="wins">Days won</button><button data-m="avg">Average score</button>
         </div>
       </div>
+      <div id="weekBanner"></div>
       <div class="podium" id="podium"></div>
       <p class="note center" id="rankNote"></p>
       <div id="perGame" class="stack wide">
@@ -118,7 +126,8 @@
       </div>
       <div id="allGames" class="stack wide" hidden>
         <div class="tablewrap" id="allTable"></div>
-        <p class="note">One point for winning each game each day, and every game is worth the same. Sharing the top score is a draw (🤝): it doesn't score a point, but it breaks ties. A win needs at least two players.</p>
+        <div id="champList" class="stack"></div>
+        <p class="note" id="allNote"></p>
       </div>
     </section>
 
@@ -266,6 +275,9 @@
     </div>
   </div>
 </div>
+
+<!-- Champion of the week: full-screen takeover on Monday morning -->
+<div class="champ" id="champ" role="dialog" aria-modal="true" aria-label="Champion of the week" hidden></div>
 
 <div class="toast" id="toast" role="status" hidden></div>
 <canvas id="confetti" aria-hidden="true"></canvas>

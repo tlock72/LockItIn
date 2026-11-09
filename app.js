@@ -26,10 +26,11 @@ let pendingShare = null;
 let pendingComment = null;    // "game|date|player" or "game|date|<message id>" from a tapped chat notification
 let adminDirty = false;
 
-// The app always opens on Today, and the leaderboards always open on All time.
+// The app always opens on Today, and the leaderboards always open on this week.
+// period = "week" (st.wk weeks back), "month", "year" or "all".
 // pm = what the podium ranks by ("wins" = days won, "avg" = average score).
 // flipped = Today cards turned over to show today's result instead of the day's winner.
-const st = { tab: "today", game: "all", period: "0", pm: "wins", sort: null, post: null, newColor: null, editColor: null, flipped: new Set(), flipAnim: null, winSeen: null };
+const st = { tab: "today", game: "all", period: "week", wk: 0, pm: "wins", sort: null, post: null, newColor: null, editColor: null, flipped: new Set(), flipAnim: null, winSeen: null };
 try {
   st.game = localStorage.getItem("lii.board") || st.game;
   st.pm = localStorage.getItem("lii.boardPm") === "avg" ? "avg" : "wins";
@@ -265,14 +266,14 @@ function guessGame(text) {
 }
 
 /* ---------- stats ---------- */
-function rowsFor(gid, fromDate) {
+function rowsFor(gid, fromDate, toDate) {
   const out = [];
-  for (const r of scores.values()) if (r.game_id === gid && (!fromDate || r.play_date >= fromDate)) out.push(r);
+  for (const r of scores.values()) if (r.game_id === gid && (!fromDate || r.play_date >= fromDate) && (!toDate || r.play_date <= toDate)) out.push(r);
   return out;
 }
-function byDate(gid, fromDate) {
+function byDate(gid, fromDate, toDate) {
   const out = {};
-  for (const r of rowsFor(gid, fromDate)) (out[r.play_date] = out[r.play_date] || []).push({ uid: r.player_id, s: Number(r.score), d: r.play_date });
+  for (const r of rowsFor(gid, fromDate, toDate)) (out[r.play_date] = out[r.play_date] || []).push({ uid: r.player_id, s: Number(r.score), d: r.play_date });
   return out;
 }
 function rankDay(list, g) {
@@ -299,9 +300,9 @@ function decided(date, n) {
   const fam = Object.keys(players).length;
   return n > 1 && (date < todayStr() || n >= fam);
 }
-function gameTable(gid, days, everyone) {
-  const g = gById(gid), from = days ? daysAgo(days - 1) : null, t = {};
-  for (const [date, list] of Object.entries(byDate(gid, from))) {
+function gameTable(gid, from, to, everyone) {
+  const g = gById(gid), t = {};
+  for (const [date, list] of Object.entries(byDate(gid, from, to))) {
     const multi = decided(date, list.length), ranked = rankDay(list, g), drew = ranked.filter((e) => e.rank === 1).length > 1;
     for (const e of ranked) {
       const r = (t[e.uid] = t[e.uid] || { uid: e.uid, played: 0, total: 0, best: null, bestDate: null, wins: 0, draws: 0 });
@@ -344,11 +345,11 @@ function dayResult(g, date = todayStr()) {
 
 // All games: one point for each game won outright each day (a win needs two players).
 // A shared top score is a draw: counted separately, and it breaks ties.
-function racePoints(from) {
+function racePoints(from, to) {
   const pts = {}, days = {};
   for (const uid of Object.keys(players)) pts[uid] = { total: 0, by: {}, draws: 0 };
   for (const g of games) {
-    for (const [date, list] of Object.entries(byDate(g.id, from))) {
+    for (const [date, list] of Object.entries(byDate(g.id, from, to))) {
       if (!decided(date, list.length)) continue;
       const win = rankDay(list, g).filter((e) => e.rank === 1);
       for (const e of win) {
@@ -363,6 +364,57 @@ function racePoints(from) {
 }
 const fmtPts = (n) => { const r = Math.round(n * 10) / 10; return r.toLocaleString(); };
 const ptsWord = (n) => `${fmtPts(n)} ${Math.round(n * 10) === 10 ? "pt" : "pts"}`;
+const ptWord = (n) => `${n} ${n === 1 ? "point" : "points"}`;
+const ordinal = (n) => n + ({ 1: "st", 2: "nd", 3: "rd" }[n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || "th");
+
+/* ---------- weeks: Monday to Sunday ---------- */
+// The week is the main event. Every game won on a day is a point; whoever has the most points
+// from Monday to Sunday wins the week. Months and years are ranked by weeks won.
+const addDays = (s, n) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); return ymd(d); };
+const weekStart = (s = todayStr()) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return ymd(d); };
+const dayName = (d, long) => nice(d, { weekday: long ? "long" : "short" });
+function weekLabel(ws) {
+  const we = addDays(ws, 6), same = ws.slice(5, 7) === we.slice(5, 7);
+  return `${nice(ws, same ? { day: "numeric" } : { day: "numeric", month: "short" })} – ${nice(we, { day: "numeric", month: "short" })}`;
+}
+const firstDate = () => { let m = null; for (const r of scores.values()) if (!m || r.play_date < m) m = r.play_date; return m; };
+// One week's standings. champs = the winner(s) once anyone has a point; margin = points ahead of the next person.
+function weekResult(ws) {
+  const we = addDays(ws, 6), { pts, days } = racePoints(ws, we);
+  const rows = raceOrder(pts).filter((u) => players[u]).map((uid) => ({ uid, pts: pts[uid].total, draws: pts[uid].draws, by: pts[uid].by }));
+  rows.forEach((r, i, a) => (r.rank = i && a[i - 1].pts === r.pts && a[i - 1].draws === r.draws ? a[i - 1].rank : i + 1));
+  const top = rows[0];
+  const champs = top && top.pts > 0 ? rows.filter((r) => r.rank === 1).map((r) => r.uid) : [];
+  const runner = rows.find((r) => !champs.includes(r.uid));
+  return { ws, we, rows, days, champs, top, runner, margin: champs.length && runner ? top.pts - runner.pts : 0, over: we < todayStr() };
+}
+// Every finished week whose Sunday falls in [from, to], oldest first.
+function finishedWeeks(from, to) {
+  const f = firstDate(); if (!f) return [];
+  const out = [], today = todayStr();
+  for (let ws = weekStart(from && from > f ? from : f); addDays(ws, 6) < today; ws = addDays(ws, 7)) {
+    const we = addDays(ws, 6);
+    if (from && we < from) continue;
+    if (to && we > to) break;
+    const r = weekResult(ws);
+    if (r.champs.length) out.push(r);
+  }
+  return out;
+}
+const titlesOf = (uid, upTo) => finishedWeeks(null, upTo).filter((w) => w.champs.includes(uid)).length;
+
+// Which slice of time the leaderboards show: a week (st.wk weeks back), this month, this year, or all time.
+function periodRange() {
+  const t = todayStr();
+  if (st.period === "week") { const ws = addDays(weekStart(t), -7 * st.wk); return { from: ws, to: addDays(ws, 6) }; }
+  if (st.period === "month") return { from: t.slice(0, 8) + "01", to: null };
+  if (st.period === "year") return { from: t.slice(0, 5) + "01-01", to: null };
+  return { from: null, to: null };
+}
+function periodPhrase() {
+  if (st.period === "week") return st.wk === 0 ? "this week" : st.wk === 1 ? "last week" : `the week of ${weekLabel(periodRange().from)}`;
+  return { month: "this month", year: "this year" }[st.period] || "all time";
+}
 
 /* ---------- rendering ---------- */
 function render() {
@@ -422,6 +474,7 @@ function renderToday() {
   $("#helloSub").textContent = `${nice(today)} · ${streak ? `🔥 ${streak}-day streak` : "Post a score to start a streak"}`;
   const winners = [...new Set(yesterdayResults().flatMap((x) => x.list.filter((e) => e.rank === 1).map((e) => e.uid)))];
   $("#yTease").textContent = winners.length ? `${listNames(winners)} ${winners.length === 1 ? "took the crown" : "took the crowns"}. Tap to see.` : "Nobody played yesterday. Tap to see.";
+  renderWeekRace();
 
   $("#cards").innerHTML = games.map((g) => {
     const { list, done, winners } = dayResult(g, today);
@@ -467,6 +520,22 @@ function renderToday() {
   st.flipAnim = null;
 }
 
+// Today: the race for this week's crown, always in view. Tap it for the weekly leaderboard.
+function renderWeekRace() {
+  const ws = weekStart(), wr = weekResult(ws), today = todayStr();
+  const left = 7 - Math.round((new Date(today + "T12:00:00") - new Date(ws + "T12:00:00")) / 864e5);
+  const lead = wr.champs, any = wr.rows.some((r) => r.pts > 0);
+  const last = weekResult(addDays(ws, -7));
+  const early = left >= 6 && last.champs.length; // Monday and Tuesday: remember last week's champion
+  const line = early && !any ? `👑 ${esc(listNames(last.champs))} won last week. New week, new crown!`
+    : !any ? "Fresh week, everyone on zero. Go get it!"
+    : lead.length === 1 ? `👑 <b>${esc(nameOf(lead[0]))}</b> leads by ${ptWord(wr.margin)}`
+    : `🤝 <b>${esc(listNames(lead))}</b> level on ${ptsWord(wr.top.pts)}`;
+  const chips = wr.rows.map((r) => `<span class="wr-p${any && r.rank === 1 ? " lead" : ""}${r.uid === me.id ? " me" : ""}" title="${esc(nameOf(r.uid))}: ${ptsWord(r.pts)}">${av(r.uid, "s")}<b>${r.pts}</b></span>`).join("");
+  $("#weekRace").innerHTML = `<span class="wr-t"><b>🏁 This week's race</b><span class="wr-line">${line}</span></span>
+    <span class="wr-r"><span class="wr-row">${chips}</span><small>${left === 1 ? "Final day!" : `${left} days left`}</small></span>`;
+}
+
 function sortHead(k, label, active) {
   return `<th><button data-sort="${k}" ${active ? 'aria-sort="descending"' : ""}>${label}${active ? " ↓" : ""}</button></th>`;
 }
@@ -492,11 +561,13 @@ function renderBoards() {
   $$("#podMetric button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === st.pm));
   $("#podMetric").hidden = all;
   $("#perGame").hidden = all; $("#allGames").hidden = !all;
+  renderWeekBar();
   if (all) return renderAllGames();
+  $("#weekBanner").innerHTML = "";
 
-  const g = gById(st.game), days = +st.period, low = g.better === "low";
+  const g = gById(st.game), low = g.better === "low", { from, to } = periodRange(), when = periodPhrase();
   const pane = $("#tab-boards"); pane.style.setProperty("--gc", gc(g.id));
-  const rows = gameTable(g.id, days, true);
+  const rows = gameTable(g.id, from, to, true);
   const sk = ["avg", "best", "total", "wins", "draws", "played", "streak"].includes(st.sort) ? st.sort : st.pm;
   const lowFirst = (k) => low && (k === "avg" || k === "best");
   const cmp = (k) => (a, b) => {
@@ -509,7 +580,7 @@ function renderBoards() {
   rows.sort((a, b) => cmp(sk)(a, b) || second(a, b) || b.played - a.played);
   rows.forEach((r, i, a) => (r.rank = i && a[i - 1][sk] === r[sk] && (sk !== "wins" || a[i - 1].draws === r.draws) ? a[i - 1].rank : i + 1));
   const label = { avg: "average score", best: "best score", total: "total points", wins: "days won", draws: "draws", played: "games played", streak: "current streak" }[sk];
-  $("#rankNote").textContent = `Ranked by ${label} · ${days ? `last ${days} days` : "all time"}`;
+  $("#rankNote").textContent = `Ranked by ${label} · ${when}`;
 
   const valOf = (r) => sk === "wins" ? `${r.wins} ${r.wins === 1 ? "day" : "days"}${drawsTag(r.draws)}`
     : sk === "draws" ? `🤝 ${r.draws}`
@@ -518,7 +589,7 @@ function renderBoards() {
   $("#podium").innerHTML = rows.some((r) => r.played) ? podiumHTML(rows, valOf) : "";
 
   // running stats tiles
-  const period = rowsFor(g.id, days ? daysAgo(days - 1) : null);
+  const period = rowsFor(g.id, from, to);
   let hi = null; for (const r of period) if (!hi || better(g, Number(r.score), Number(hi.score))) hi = r;
   const famAvg = period.length ? period.reduce((s, r) => s + Number(r.score), 0) / period.length : null;
   const mostWins = rows.slice().sort((a, b) => b.wins - a.wins || b.draws - a.draws)[0];
@@ -539,7 +610,7 @@ function renderBoards() {
         <td class="pl">${person(r.uid)}</td>
         <td>${fmt(r.avg)}</td><td>${fmt(r.best)}</td>${low ? "" : `<td>${r.played ? fmt(r.total) : "–"}</td>`}<td>${r.wins}</td><td>${r.draws || "–"}</td><td>${r.played}</td><td>${r.streak || "–"}</td>
         <td class="spark">${sparkline(r.form, g)}</td></tr>`).join("")}</tbody></table>`
-    : `<div class="empty"><b>No ${esc(g.name)} scores ${days ? `in the last ${days} days` : "yet"}</b>Play today's ${esc(g.name)} and lock in your score to get on the board.</div>`;
+    : `<div class="empty"><b>No ${esc(g.name)} scores ${st.period === "all" ? "yet" : esc(when)}</b>Play today's ${esc(g.name)} and lock in your score to get on the board.</div>`;
   $("#boardNote").textContent = `A day is won once everyone has played it or the day is over, and needs at least two players; sharing the top score is a draw (🤝). Form shows each person's last 10 ${g.name} scores. Tap a column to re-rank the table and podium.`;
 
   // Krillion: answer tiers (from pasted results)
@@ -580,13 +651,15 @@ function renderBoards() {
 
   // last 14 days
   const grid = $("#grid"), gh = $("#gridH");
-  const bd = byDate(g.id, daysAgo(13)), dayList = [...Array(14)].map((_, i) => daysAgo(13 - i));
+  const wk = st.period === "week";
+  const dayList = wk ? [...Array(7)].map((_, i) => addDays(from, i)) : [...Array(14)].map((_, i) => daysAgo(13 - i));
+  const bd = byDate(g.id, dayList[0], dayList[dayList.length - 1]);
   const uids = [...new Set(Object.values(bd).flat().map((e) => e.uid))];
-  gh.textContent = "Last 14 days";
+  gh.textContent = wk ? "Day by day" : "Last 14 days";
   gh.hidden = grid.hidden = !uids.length;
   if (uids.length) {
     const ranked = Object.fromEntries(dayList.map((d) => [d, rankDay(bd[d] || [], g)]));
-    const dl = (d) => { const x = new Date(d + "T12:00:00"); return x.toLocaleDateString(undefined, { weekday: "narrow" }) + "<br>" + x.getDate(); };
+    const dl = (d) => { const x = new Date(d + "T12:00:00"); return x.toLocaleDateString(undefined, { weekday: wk ? "short" : "narrow" }) + "<br>" + x.getDate(); };
     grid.innerHTML = `<table class="grid"><thead><tr><th></th><th>Player</th>${dayList.map((d) => `<th class="day">${dl(d)}</th>`).join("")}</tr></thead><tbody>${uids.map((u) =>
       `<tr class="${u === me.id ? "me" : ""}"><td></td><td class="pl">${person(u)}</td>${dayList.map((d) => {
         const e = ranked[d].find((x) => x.uid === u);
@@ -600,26 +673,88 @@ function renderBoards() {
 function raceOrder(pts) {
   return Object.keys(pts).sort((a, b) => pts[b].total - pts[a].total || (pts[b].draws || 0) - (pts[a].draws || 0) || nameOf(a).localeCompare(nameOf(b)));
 }
+// The big bar at the top of the leaderboards: which week (with arrows to go back), or which longer period.
+function renderWeekBar() {
+  const wk = st.period === "week", { from } = periodRange(), f = firstDate();
+  $("#wkPrev").hidden = $("#wkNext").hidden = !wk;
+  if (wk) {
+    const left = 6 - Math.round((new Date(todayStr() + "T12:00:00") - new Date(from + "T12:00:00")) / 864e5);
+    $("#wkTitle").textContent = st.wk === 0 ? "This week" : st.wk === 1 ? "Last week" : `Week of ${nice(from, { day: "numeric", month: "short" })}`;
+    $("#wkSub").textContent = `${weekLabel(from)} · ${st.wk === 0 ? (left === 0 ? "Final day!" : `${left + 1} days to go`) : "Final"}`;
+    $("#wkPrev").disabled = !f || from <= weekStart(f);
+    $("#wkNext").disabled = st.wk === 0;
+  } else {
+    const t = todayStr();
+    $("#wkTitle").textContent = st.period === "month" ? nice(t, { month: "long", year: "numeric" }) : st.period === "year" ? t.slice(0, 4) : "All time";
+    $("#wkSub").textContent = st.game === "all" ? "Ranked by weeks won 👑" : "The longer view";
+  }
+}
+
 function renderAllGames() {
-  const days = +st.period, from = days ? daysAgo(days - 1) : null;
-  const { pts } = racePoints(from);
-  const order = raceOrder(pts);
-  const rows = order.map((uid) => ({ uid, wins: pts[uid].total, draws: pts[uid].draws }));
-  rows.forEach((r, i, a) => (r.rank = i && a[i - 1].wins === r.wins && a[i - 1].draws === r.draws ? a[i - 1].rank : i + 1));
-  const any = rows.some((r) => r.wins > 0 || r.draws > 0);
   $("#tab-boards").style.setProperty("--gc", "var(--accent)");
-  $("#rankNote").textContent = `Ranked by days won, one for each game won each day; draws 🤝 break ties · ${days ? `last ${days} days` : "all time"}`;
-  $("#podium").innerHTML = any ? podiumHTML(rows, (r) => `${r.wins} ${r.wins === 1 ? "day" : "days"}${drawsTag(r.draws)}`) : "";
-
-  const avail = games.reduce((n, g) => n + Object.entries(byDate(g.id, from)).filter(([d, l]) => decided(d, l.length)).length, 0);
-  const won = rows.reduce((n, r) => n + r.wins, 0), drawn = avail - won;
-
-  const totals = Object.fromEntries(games.map((g) => [g.id, order.reduce((n, u) => n + (pts[u].by[g.id] || 0), 0)]));
+  if (st.period === "week") return renderWeekBoard(periodRange().from);
+  const { from, to } = periodRange(), when = periodPhrase();
+  const weeks = finishedWeeks(from, to), { pts } = racePoints(from, to);
+  const titles = {};
+  for (const w of weeks) for (const u of w.champs) titles[u] = (titles[u] || 0) + 1;
+  const rows = Object.keys(players).map((uid) => ({ uid, titles: titles[uid] || 0, pts: pts[uid]?.total || 0, draws: pts[uid]?.draws || 0 }));
+  rows.sort((a, b) => b.titles - a.titles || b.pts - a.pts || b.draws - a.draws);
+  rows.forEach((r, i, a) => (r.rank = i && a[i - 1].titles === r.titles && a[i - 1].pts === r.pts && a[i - 1].draws === r.draws ? a[i - 1].rank : i + 1));
+  const any = rows.some((r) => r.pts > 0 || r.titles > 0);
+  $("#weekBanner").innerHTML = "";
+  $("#rankNote").textContent = `Ranked by weeks won, then points · ${when}`;
+  $("#podium").innerHTML = any ? podiumHTML(rows, (r) => `${r.titles} 👑 <small class="drew">${ptsWord(r.pts)}</small>`) : "";
   $("#allTable").innerHTML = any
-    ? `<table class="alltable"><thead><tr><th>#</th><th>Player</th><th>Won</th><th>🤝 Drew</th>${games.map((g) => `<th style="color:${gc(g.id)}">${esc(g.name)}</th>`).join("")}</tr></thead><tbody>
-      ${rows.map((r) => `<tr class="${r.uid === me.id ? "me" : ""}"><td class="rank ${MEDAL[r.rank] ? "" : "plain"}">${MEDAL[r.rank] || r.rank}</td><td class="pl">${person(r.uid)}</td><td class="tot">${fmtPts(r.wins)}</td><td>${r.draws || "–"}</td>${games.map((g) => `<td>${pts[r.uid].by[g.id] ? fmtPts(pts[r.uid].by[g.id]) : "–"}</td>`).join("")}</tr>`).join("")}
-      <tr class="famrow"><td></td><td class="pl">Family</td><td class="tot">${fmtPts(won)}</td><td>${drawn || "–"}</td>${games.map((g) => `<td>${fmtPts(totals[g.id])}</td>`).join("")}</tr></tbody></table>`
-    : `<div class="empty"><b>No wins ${days ? `in the last ${days} days` : "yet"}</b>Win a game on a day when at least two of you play to get on the board.</div>`;
+    ? `<table class="alltable"><thead><tr><th>#</th><th>Player</th><th>👑 Weeks</th><th>Points</th><th>🤝</th>${games.map((g) => `<th style="color:${gc(g.id)}">${esc(g.name)}</th>`).join("")}</tr></thead><tbody>
+      ${rows.map((r) => `<tr class="${r.uid === me.id ? "me" : ""}"><td class="rank ${MEDAL[r.rank] ? "" : "plain"}">${MEDAL[r.rank] || r.rank}</td><td class="pl">${person(r.uid)}</td><td class="tot">${r.titles || "–"}</td><td>${r.pts || "–"}</td><td>${r.draws || "–"}</td>${games.map((g) => `<td>${pts[r.uid]?.by[g.id] || "–"}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+    : `<div class="empty"><b>No wins ${st.period === "all" ? "yet" : esc(when)}</b>Win a game on a day when at least two of you play to get on the board.</div>`;
+  $("#champList").innerHTML = weeks.length
+    ? `<h3>Weekly champions</h3><div class="champlist">${weeks.slice().reverse().map((w) => `<button type="button" class="chrow" data-champ="${w.ws}">
+        <span class="chav">${w.champs.map((u) => av(u, "m")).join("")}</span>
+        <span class="cht"><b>${esc(listNames(w.champs))}</b><small>${weekLabel(w.ws)} · ${ptsWord(w.top.pts)}${w.champs.length > 1 ? " · shared" : w.margin ? ` · won by ${w.margin}` : " · on draws"}</small></span>
+        <span class="chev" aria-hidden="true">›</span></button>`).join("")}</div>`
+    : `<p class="note">No finished weeks ${esc(when)} yet. The first champion is crowned on Monday.</p>`;
+  $("#allNote").textContent = "Each week, every game won on a day is a point (all games count the same). Most points from Monday to Sunday wins the week 👑. Months and years are ranked by weeks won, then points.";
+}
+
+// One week, day by day: who won what each day, and the race for the crown.
+function renderWeekBoard(ws) {
+  const wr = weekResult(ws), today = todayStr(), live = !wr.over;
+  const dates = [...Array(7)].map((_, i) => addDays(ws, i));
+  const daysLeft = dates.filter((d) => d >= today).length;
+  const decidedToday = games.filter((g) => dayResult(g, today).done).length;
+  const toPlay = live ? Math.max(0, daysLeft * games.length - decidedToday) : 0;
+  const any = wr.rows.some((r) => r.pts > 0 || r.draws > 0);
+  const lead = wr.champs, top = wr.top;
+
+  // banner: the champion once the week is over; last week's champion while this one is running
+  let banner = "";
+  if (!live && lead.length) {
+    banner = `<button type="button" class="wkchamp" data-champ="${ws}"><span class="chav">${lead.map((u) => av(u, "l")).join("")}</span>
+      <span class="cht"><b>👑 ${esc(listNames(lead))} ${lead.length > 1 ? "shared the week" : "won the week"}</b><small>${lead.length > 1 ? `on ${ptsWord(top.pts)}` : wr.margin ? `by ${ptWord(wr.margin)}` : "on draws"} · Tap for the week in numbers</small></span><span class="chev" aria-hidden="true">›</span></button>`;
+  } else if (live && st.wk === 0) {
+    const last = weekResult(addDays(ws, -7));
+    if (last.champs.length) banner = `<button type="button" class="lastchamp" data-champ="${last.ws}">${last.champs.map((u) => av(u, "s")).join("")}<span>Last week: <b>${esc(listNames(last.champs))}</b> 👑 Relive it</span></button>`;
+  }
+  $("#weekBanner").innerHTML = banner;
+
+  $("#rankNote").innerHTML = !any ? "" : live
+    ? `${lead.length === 1 ? `👑 <b>${esc(nameOf(lead[0]))}</b> leads by ${ptWord(wr.margin)}` : lead.length ? `🤝 ${esc(listNames(lead))} are level` : "Nobody's scored yet"} · <b>${toPlay}</b> ${toPlay === 1 ? "point" : "points"} still up for grabs`
+    : `Final: ${lead.length > 1 ? `${esc(listNames(lead))} shared it` : `${esc(nameOf(lead[0]))} won by ${ptWord(wr.margin)}`}`;
+  $("#podium").innerHTML = any ? podiumHTML(wr.rows, (r) => `${ptsWord(r.pts)}${drawsTag(r.draws)}`) : "";
+
+  // day by day: points won each day (one per game), gold when someone won something that day
+  const dayPts = (u, d) => (wr.days[d] || []).filter((x) => x.uid === u);
+  $("#allTable").innerHTML = any
+    ? `<table class="alltable weekgrid"><thead><tr><th>#</th><th>Player</th>${dates.map((d) => `<th class="day${d === today ? " now" : ""}">${dayName(d)}<br>${+d.slice(8)}</th>`).join("")}<th>Pts</th></tr></thead><tbody>
+      ${wr.rows.map((r) => `<tr class="${r.uid === me.id ? "me" : ""}"><td class="rank ${MEDAL[r.rank] ? "" : "plain"}">${MEDAL[r.rank] || r.rank}</td><td class="pl">${person(r.uid)}</td>${dates.map((d) => {
+        if (d > today) return `<td class="cell future">·</td>`;
+        const w = dayPts(r.uid, d);
+        return `<td class="cell${w.length ? " win" : ""}${d === today ? " now" : ""}" title="${w.map((x) => esc(gById(x.gid)?.name)).join(", ")}">${w.length ? w.map((x) => `<i style="background:${gc(x.gid)}"></i>`).join("") : "–"}</td>`;
+      }).join("")}<td class="tot">${r.pts}${r.draws ? `<small class="drew"> +${r.draws}🤝</small>` : ""}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty"><b>No wins ${esc(periodPhrase())} yet</b>${live ? "It's all to play for! Win a game today to get on the board." : "Nobody won a game that week."}</div>`;
+  $("#champList").innerHTML = any ? `<div class="legend">${games.map((g) => `<span><i style="background:${gc(g.id)}"></i>${esc(g.name)}</span>`).join("")}</div>` : "";
+  $("#allNote").textContent = "Every game won on a day is a point, and every game counts the same. Most points from Monday to Sunday wins the week 👑, and the champion gets the big reveal on Monday morning. A win needs at least two players; sharing the top score is a draw (🤝), which breaks ties.";
 }
 function renderFamily() {
   $("#meAvatar").innerHTML = av(me.id, "xl");
@@ -630,11 +765,13 @@ function renderFamily() {
     renderSwatches("#editColors", st.editColor);
   }
   const list = Object.values(players); // family order: Dad, Mum, Tobey, Jas
+  const weeks = finishedWeeks(null, null);
   $("#familyList").innerHTML = list.map((p) => {
-    const mine = games.map((g) => gameTable(g.id, 0).find((r) => r.uid === p.id) || { wins: 0, draws: 0 });
+    const mine = games.map((g) => gameTable(g.id, null, null).find((r) => r.uid === p.id) || { wins: 0, draws: 0 });
     const wins = mine.reduce((s, r) => s + r.wins, 0), draws = mine.reduce((s, r) => s + r.draws, 0);
     const played = [...scores.values()].filter((r) => r.player_id === p.id).length;
-    return `<div class="fam">${av(p.id, "m")}<div style="min-width:0"><div class="nm">${esc(p.name)}${p.id === me.id ? " (you)" : ""}</div><small>${played} scores · ${winsText(wins, draws)}${p.is_admin ? " · admin" : ""}</small></div></div>`;
+    const t = weeks.filter((w) => w.champs.includes(p.id)).length;
+    return `<div class="fam">${av(p.id, "m")}<div style="min-width:0"><div class="nm">${esc(p.name)}${p.id === me.id ? " (you)" : ""}</div><small>${t ? `👑 ${t} ${t === 1 ? "week" : "weeks"} won · ` : ""}${played} scores · ${winsText(wins, draws)}${p.is_admin ? " · admin" : ""}</small></div></div>`;
   }).join("");
 
   $("#adminPanel").hidden = !me.is_admin;
@@ -741,7 +878,7 @@ async function liveVersion() {
   return (t.match(/VERSION\s*=\s*"([^"]+)"/) || [])[1] || null;
 }
 function reloadIfSafe() {
-  if ($$(".sheet-wrap").some((w) => !w.hidden)) return;
+  if ($$(".sheet-wrap").some((w) => !w.hidden) || !$("#champ").hidden) return;
   const a = document.activeElement;
   if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return; // never reload under someone typing
   location.reload();
@@ -973,6 +1110,203 @@ function openYesterday() {
   if (winnerColors.length) setTimeout(() => confetti(["#F2B21B", "#FFD95A", ...winnerColors]), 150);
 }
 
+/* ---------- Champion of the week: the Monday morning takeover ---------- */
+// From Monday, the first time each device opens LockItIn it is taken over by last week's champion:
+// screen 1 is their face, huge, and how much they won by; screen 2 is the week in numbers.
+// It stays up until someone taps through it. Leaderboards → a finished week brings it back any time.
+function weekStats(ws) {
+  const we = addDays(ws, 6), wr = weekResult(ws), out = [];
+  const T = (emoji, title, value, sub, uid) => out.push({ emoji, title, value, sub, uid });
+  const rows = [...scores.values()].filter((r) => r.play_date >= ws && r.play_date <= we && players[r.player_id]);
+  const fam = Object.keys(players);
+  const day = (d) => dayName(d, true);
+  const top = (obj) => { const k = Object.keys(obj).filter((u) => obj[u] > 0).sort((a, b) => obj[b] - obj[a]); return k.length ? { uid: k[0], n: obj[k[0]], tied: k.filter((u) => obj[u] === obj[k[0]]) } : null; };
+
+  // Each game's champion of the week
+  for (const g of games) {
+    const c = top(Object.fromEntries(wr.rows.map((r) => [r.uid, r.by[g.id] || 0])));
+    if (c) T(g.id === "krillion" ? "🦐" : g.id === "maptap" ? "📍" : g.id === "timeguessr" ? "⏳" : "⭐", `${g.name} champ`, esc(listNames(c.tied)), `${c.n} ${c.n === 1 ? "day" : "days"} won`, c.tied.length === 1 ? c.uid : null);
+  }
+  // Clean sweeps: one person won every game on a day
+  if (games.length > 1) {
+    const sweeps = [];
+    for (const [d, list] of Object.entries(wr.days)) { const u = new Set(list.map((x) => x.uid)); if (list.length === games.length && u.size === 1) sweeps.push({ d, uid: list[0].uid }); }
+    if (sweeps.length) T("🧹", sweeps.length > 1 ? `${sweeps.length} clean sweeps` : "Clean sweep", esc(listNames([...new Set(sweeps.map((s) => s.uid))])), `won every game on ${sweeps.map((s) => dayName(s.d, true)).join(" & ")}`, sweeps.length === 1 ? sweeps[0].uid : null);
+  }
+  // Longest run of days winning at least one game
+  let best = null;
+  for (const u of fam) {
+    let run = 0, startAt = null;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i);
+      if ((wr.days[d] || []).some((x) => x.uid === u)) { if (!run) startAt = d; run++; if (!best || run > best.n) best = { uid: u, n: run, from: startAt, to: d }; }
+      else run = 0;
+    }
+  }
+  if (best && best.n >= 2) T("🔥", "Hot streak", `${best.n} days`, `${esc(nameOf(best.uid))} won something every day, ${dayName(best.from)}–${dayName(best.to)}`, best.uid);
+  // Best score of the week in each game
+  for (const g of games) {
+    let hi = null;
+    for (const r of rows) if (r.game_id === g.id && (!hi || better(g, Number(r.score), Number(hi.score)))) hi = r;
+    if (hi) T("🚀", `Top ${g.name} score`, `${fmt(hi.score)}${g.max_score ? `<small> / ${fmt(g.max_score)}</small>` : ""}`, `${esc(nameOf(hi.player_id))} · ${day(hi.play_date)}`, hi.player_id);
+  }
+  // Biggest win and closest finish (gap between 1st and 2nd, measured against the game's max)
+  let big = null, close = null;
+  for (const g of games) for (const [d, list] of Object.entries(byDate(g.id, ws, we))) {
+    if (!decided(d, list.length)) continue;
+    const rk = rankDay(list, g); if (rk[1].rank === 1) continue;
+    const gap = Math.abs(rk[0].s - rk[1].s), rel = gap / (Number(g.max_score) || Math.max(rk[0].s, 1));
+    const e = { g, d, gap, rel, w: rk[0].uid, l: rk[1].uid };
+    if (!big || rel > big.rel) big = e;
+    if (!close || rel < close.rel) close = e;
+  }
+  if (big) T("💥", "Biggest win", `by ${fmt(big.gap)}`, `${esc(nameOf(big.w))} over ${esc(nameOf(big.l))} · ${esc(big.g.name)}, ${day(big.d)}`, big.w);
+  if (close && close !== big) T("😬", "Closest finish", `${fmt(close.gap)} ${close.gap === 1 ? "point" : "points"}`, `${esc(nameOf(close.w))} just beat ${esc(nameOf(close.l))} · ${esc(close.g.name)}, ${day(close.d)}`, close.w);
+  // Krillion catches
+  const deep = {}, krill = {};
+  for (const r of rows) if (r.game_id === "krillion" && r.details && r.details.tiers) { deep[r.player_id] = (deep[r.player_id] || 0) + (r.details.tiers.deepcut || 0); krill[r.player_id] = (krill[r.player_id] || 0) + (r.details.tiers.krillion || 0); }
+  const kc = top(krill), dc = top(deep);
+  if (kc) T("🌟", "One in a Krillion!", esc(listNames(kc.tied)), `caught ${kc.n} of the rarest answers`, kc.tied.length === 1 ? kc.uid : null);
+  if (dc) T("🏮", "Deep-sea diver", `${dc.n} deep cuts`, esc(listNames(dc.tied)), dc.tied.length === 1 ? dc.uid : null);
+  // MapTap sharpest guess, TimeGuessr spot-on years and closest guess
+  let pin = null, km = null; const spot = {};
+  for (const r of rows) {
+    const rs = (r.details && r.details.rounds) || [];
+    if (r.game_id === "maptap") for (const x of rs) if (typeof x === "number" && (!pin || x > pin.v)) pin = { v: x, uid: r.player_id, d: r.play_date };
+    if (r.game_id === "timeguessr") for (const x of rs) {
+      if (x.years === 0) spot[r.player_id] = (spot[r.player_id] || 0) + 1;
+      if (x.km != null && (!km || x.km < km.v)) km = { v: x.km, uid: r.player_id, d: r.play_date };
+    }
+  }
+  if (pin) T("🎯", "Sharpest pin", `${pin.v}<small> / 100</small>`, `${esc(nameOf(pin.uid))} · MapTap, ${day(pin.d)}`, pin.uid);
+  const sp = top(spot);
+  if (sp) T("📅", "Time traveller", `${sp.n} spot-on ${sp.n === 1 ? "year" : "years"}`, `${esc(listNames(sp.tied))} · TimeGuessr`, sp.tied.length === 1 ? sp.uid : null);
+  if (km) T("🌍", "Closest guess", fmtKm(km.v), `${esc(nameOf(km.uid))} · TimeGuessr, ${day(km.d)}`, km.uid);
+  // Turning up: most scores posted, and anyone who never missed a game
+  const posted = {}; for (const r of rows) posted[r.player_id] = (posted[r.player_id] || 0) + 1;
+  const all = games.length * 7, perfect = fam.filter((u) => posted[u] === all);
+  const pc = top(posted);
+  if (perfect.length) T("💯", "Never missed a game", esc(listNames(perfect)), `all ${all} games, every single day`, perfect.length === 1 ? perfect[0] : null);
+  else if (pc) T("🗓️", "Most dedicated", esc(listNames(pc.tied)), `${pc.n} of ${all} games played`, pc.tied.length === 1 ? pc.uid : null);
+  // Chat
+  const talk = {};
+  for (const r of rows) if (r.comment) talk[r.player_id] = (talk[r.player_id] || 0) + 1;
+  for (const m of msgs.values()) if (m.play_date >= ws && m.play_date <= we && players[m.player_id]) talk[m.player_id] = (talk[m.player_id] || 0) + 1;
+  const tc = top(talk);
+  if (tc) T("💬", "Chatterbox", esc(listNames(tc.tied)), `${tc.n} ${tc.n === 1 ? "message" : "messages"} and comments`, tc.tied.length === 1 ? tc.uid : null);
+  // Biggest climber since the week before
+  const prev = weekResult(addDays(ws, -7));
+  if (prev.rows.some((r) => r.pts > 0)) {
+    let climb = null;
+    for (const r of wr.rows) { const p = prev.rows.find((x) => x.uid === r.uid); if (p && p.rank - r.rank > 0 && (!climb || p.rank - r.rank > climb.n)) climb = { uid: r.uid, n: p.rank - r.rank, from: p.rank, to: r.rank }; }
+    if (climb) T("📈", "Biggest climber", `${ordinal(climb.from)} → ${ordinal(climb.to)}`, `${esc(nameOf(climb.uid))} on the week before`, climb.uid);
+  }
+  // Busiest day
+  const per = {}; for (const r of rows) per[r.play_date] = (per[r.play_date] || 0) + 1;
+  const bd = Object.keys(per).sort((a, b) => per[b] - per[a])[0];
+  if (bd) T("📆", "Busiest day", day(bd), `${per[bd]} scores locked in`);
+  // Family totals
+  const won = wr.rows.reduce((s, r) => s + r.pts, 0);
+  T("👨‍👩‍👧‍👦", "The family", `${rows.length} games`, `played this week · ${ptWord(won)} won`);
+  // Wooden spoon, with love
+  const last = wr.rows[wr.rows.length - 1];
+  if (fam.length > 2 && last && last.rank > 1 && wr.rows.filter((r) => r.rank === last.rank).length === 1 && posted[last.uid])
+    T("🥄", "Wooden spoon", esc(nameOf(last.uid)), `${ptsWord(last.pts)} · there's always next week!`, last.uid);
+  return out;
+}
+
+const champ = { ws: null, timers: [] };
+function fanfare() {
+  try {
+    const A = window.AudioContext || window.webkitAudioContext; if (!A) return;
+    const ctx = champ.ctx = champ.ctx || new A(), t0 = ctx.currentTime + 0.05;
+    if (ctx.state === "suspended") ctx.resume();
+    // Ta-da-da-DAAA: G4 C5 E5 G5, then a held C6 chord
+    [[392, 0, 0.14], [523, 0.15, 0.14], [659, 0.3, 0.14], [784, 0.45, 0.3], [1047, 0.8, 1.1], [784, 0.8, 1.1], [659, 0.8, 1.1]].forEach(([f, at, len]) => {
+      const o = ctx.createOscillator(), gn = ctx.createGain();
+      o.type = "sawtooth"; o.frequency.value = f;
+      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2400;
+      gn.gain.setValueAtTime(0, t0 + at); gn.gain.linearRampToValueAtTime(0.09, t0 + at + 0.02); gn.gain.exponentialRampToValueAtTime(0.001, t0 + at + len);
+      o.connect(lp); lp.connect(gn); gn.connect(ctx.destination); o.start(t0 + at); o.stop(t0 + at + len + 0.05);
+    });
+  } catch (e) {}
+}
+function champConfetti() {
+  const w = weekResult(champ.ws);
+  confetti(["#F2B21B", "#FFD95A", "#FFFFFF", ...w.champs.map((u) => safeColor(players[u]?.color))]);
+}
+function openChampion(ws) {
+  const w = weekResult(ws);
+  if (!w.champs.length) return;
+  champ.ws = ws;
+  const many = w.champs.length > 1, c0 = w.champs[0];
+  const titles = Object.fromEntries(w.champs.map((u) => [u, titlesOf(u, w.we)]));
+  const prev = weekResult(addDays(ws, -7));
+  const b2b = !many && prev.champs.length === 1 && prev.champs[0] === c0;
+  const badge = b2b ? "🔥 Back-to-back champion!" : !many && titles[c0] > 1 ? `🏆 ${ordinal(titles[c0])} weekly title` : !many ? "🎉 First weekly title!" : "🤝 Joint champions";
+  const byLine = many ? `shared the crown on <b>${w.top.pts}</b> ${w.top.pts === 1 ? "point" : "points"}`
+    : w.margin ? `won the week by <b>${w.margin}</b> ${w.margin === 1 ? "point" : "points"}!`
+    : `won the week <b>on draws</b>!`;
+  const by = Object.entries(w.top.by).sort((a, b) => b[1] - a[1]).map(([g, n]) => `${n} ${esc(gById(g)?.name || g)}`).join(" · ");
+  const rest = w.rows.filter((r) => !w.champs.includes(r.uid)).map((r) => `<span>${MEDAL[r.rank] || ordinal(r.rank)} ${esc(nameOf(r.uid))} <b>${r.pts}</b></span>`).join("");
+  const max = Math.max(1, ...w.rows.map((r) => r.pts));
+  const stats = weekStats(ws);
+  $("#champ").style.setProperty("--chc", safeColor(players[c0]?.color));
+  $("#champ").innerHTML = `
+    <section class="ch-p1" id="chP1" aria-labelledby="chTitle">
+      <div class="ch-rays" aria-hidden="true"></div>
+      <div class="ch-kicker">Week of ${weekLabel(ws)}</div>
+      <h1 class="ch-title" id="chTitle">${XMAS ? "🎅 " : ""}Champion of the week!</h1>
+      <button type="button" class="ch-face${many ? " many" : ""}" id="chFace" aria-label="Celebrate again">
+        <span class="ch-crown" aria-hidden="true">👑</span>${w.champs.map((u) => av(u, "xxl")).join("")}
+      </button>
+      <div class="ch-name">${esc(listNames(w.champs))}</div>
+      <div class="ch-by">${byLine}</div>
+      <div class="ch-badge">${badge}</div>
+      <div class="ch-pts"><b>${ptsWord(w.top.pts)}</b>${by ? ` · ${by}` : ""}</div>
+      ${rest ? `<div class="ch-rest">${rest}</div>` : ""}
+      <button type="button" class="ch-next" id="chNext">See the week in numbers →</button>
+    </section>
+    <section class="ch-p2" id="chP2" hidden aria-labelledby="chTitle2">
+      <div class="ch-top"><button type="button" class="ch-back" id="chBack" aria-label="Back to the champion">‹</button>
+        <div><h2 id="chTitle2">The week in numbers</h2><p>${weekLabel(ws)}</p></div></div>
+      <div class="ch-stand">${w.rows.map((r) => `<div class="ch-bar${w.champs.includes(r.uid) ? " win" : ""}">
+          <span class="ch-rk">${w.champs.includes(r.uid) ? "👑" : MEDAL[r.rank] || ordinal(r.rank)}</span>${av(r.uid, "m")}
+          <span class="ch-track"><span class="ch-fill" style="--w:${(r.pts / max).toFixed(3)};--c:${safeColor(players[r.uid]?.color)}"></span><span class="ch-bn">${esc(nameOf(r.uid))}</span></span>
+          <b class="ch-bp">${r.pts}</b></div>`).join("")}</div>
+      <div class="ch-tiles">${stats.map((s, i) => `<div class="ch-tile" style="--i:${i}">
+          <span class="ch-te" aria-hidden="true">${s.emoji}</span><span class="ch-tl">${s.title}</span>
+          <span class="ch-tv">${s.uid ? av(s.uid, "s") : ""}<span>${s.value}</span></span><span class="ch-ts">${s.sub}</span></div>`).join("")}</div>
+      <button type="button" class="ch-next" id="chDone">Bring on next week! 💪</button>
+    </section>`;
+  $("#champ").hidden = false; $("#champ").scrollTop = 0;
+  document.body.classList.add("champ-on");
+  champ.timers.forEach(clearTimeout);
+  champ.timers = [300, 2700, 5100].map((ms) => setTimeout(champConfetti, ms));
+  if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 120]);
+  setTimeout(() => $("#chNext")?.focus({ preventScroll: true }), 50);
+}
+function champPage(n) {
+  $("#chP1").hidden = n !== 1; $("#chP2").hidden = n !== 2; $("#champ").scrollTop = 0;
+  (n === 2 ? $("#chDone") : $("#chNext")).focus({ preventScroll: true });
+}
+function closeChampion() {
+  champ.timers.forEach(clearTimeout); champ.timers = [];
+  save("lii.champSeen", champ.ws);
+  $("#champ").hidden = true; $("#champ").innerHTML = "";
+  document.body.classList.remove("champ-on");
+  if (updateReady) reloadIfSafe();
+}
+// Monday onwards: show last week's champion once per device.
+function maybeChampion() {
+  if (!me || !$("#champ").hidden || $$(".sheet-wrap").some((w) => !w.hidden)) return;
+  const ws = addDays(weekStart(), -7);
+  let seen = null; try { seen = localStorage.getItem("lii.champSeen"); } catch (e) {}
+  if (seen && seen >= ws) return;
+  if (!weekResult(ws).champs.length) return;
+  openChampion(ws);
+}
+
 /* ---------- notifications ---------- */
 // In the app: a toast whenever someone else locks in a score, and when someone wins the day.
 // On phones and computers: real notifications through the "notify" Supabase Edge Function (see README).
@@ -1126,6 +1460,7 @@ async function loadAll() {
   ]);
   allGames = g; games = g.filter((x) => x.active);
   render(); checkWins(); render();
+  maybeChampion();
 }
 let subscribed = false;
 function subscribe() {
@@ -1308,7 +1643,19 @@ function wire() {
     const gp = t.closest("[data-game]");
     if (gp) { st.game = gp.dataset.game; st.sort = null; save("lii.board", st.game); renderBoards(); return; }
     const per = t.closest("#period button");
-    if (per) { st.period = per.dataset.p; renderBoards(); return; }
+    if (per) { st.period = per.dataset.p; st.wk = 0; renderBoards(); return; }
+    if (t.closest("#wkPrev")) { st.wk++; renderBoards(); return; }
+    if (t.closest("#wkNext")) { st.wk = Math.max(0, st.wk - 1); renderBoards(); return; }
+    if (t.closest("#weekRace")) {
+      st.flipped.clear(); st.tab = "boards"; st.game = "all"; st.period = "week"; st.wk = 0; st.sort = null;
+      $("#scroller").scrollTop = 0; render(); return;
+    }
+    const ch = t.closest("[data-champ]");
+    if (ch) { openChampion(ch.dataset.champ); return; }
+    if (t.closest("#chFace")) { champConfetti(); fanfare(); const f = $("#chFace"); f.classList.remove("boing"); void f.offsetWidth; f.classList.add("boing"); return; }
+    if (t.closest("#chNext")) { fanfare(); champPage(2); return; }
+    if (t.closest("#chBack")) { champPage(1); return; }
+    if (t.closest("#chDone")) { closeChampion(); return; }
     const pm = t.closest("#podMetric button");
     if (pm) { st.pm = pm.dataset.m; st.sort = null; save("lii.boardPm", st.pm); renderBoards(); return; }
     const so = t.closest("[data-sort]");
@@ -1324,7 +1671,11 @@ function wire() {
       if (!error) { await loadPlayers(); render(); }
     }
   });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheets(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("#champ").hidden) { if (!$("#chP2").hidden) champPage(1); return; } // the champion screen stays until tapped through
+    closeSheets();
+  });
 
   $("#newForm").addEventListener("submit", async (e) => {
     e.preventDefault();
