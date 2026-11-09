@@ -907,8 +907,19 @@ function setChatSpoiler(on) {
   const b = $("#chatSpoil");
   b.setAttribute("aria-pressed", String(st.chatSpoiler));
   $("#chatForm").classList.toggle("spoiling", st.chatSpoiler);
-  $("#chatText").placeholder = st.chatSpoiler ? "Spoiler: only people who've played will see it…" : "Say something…";
+  spoilHint();
 }
+// The spoiler hint in the message box: the longest wording that fits on one line on this screen.
+const SPOIL_HINTS = ["Only people who've played can see this comment", "Only those who've played can see this", "Only those who've played see this", "Only those who've played"];
+function spoilHint() {
+  const t = $("#chatText");
+  if (!st.chatSpoiler) { t.placeholder = "Say something…"; return; }
+  const cs = getComputedStyle(t), room = t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 4;
+  const c = (spoilHint.c ||= document.createElement("canvas").getContext("2d"));
+  c.font = `${cs.fontWeight} 14px ${cs.fontFamily}`;
+  t.placeholder = SPOIL_HINTS.find((s) => c.measureText(s).width <= room) || SPOIL_HINTS[SPOIL_HINTS.length - 1];
+}
+window.addEventListener("resize", () => { if (st.chatSpoiler) spoilHint(); });
 async function deleteChat(id) {
   if (!confirm("Delete this message?")) return;
   const { error } = await sb.from("messages").delete().eq("id", id);

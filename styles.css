@@ -684,6 +684,7 @@ textarea.comment{min-height:64px}
 .spoilbtn{flex:none;width:44px;height:44px;border-radius:999px;border:2px solid var(--line);background:var(--soft);font-size:20px;line-height:1;cursor:pointer;filter:grayscale(1);opacity:.7;padding:0}
 .spoilbtn[aria-pressed="true"]{filter:none;opacity:1;border-color:#7c3aed;background:color-mix(in srgb,#7c3aed 14%,var(--soft))}
 .chatbar.spoiling .chatrow textarea{border-color:#7c3aed}
+.chatbar.spoiling .chatrow textarea::placeholder{font-size:14px;color:#7c3aed;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (prefers-reduced-motion:no-preference){.bub.focus .bb{animation:cpop .45s cubic-bezier(.2,1.4,.4,1) both}}
 @keyframes cpop{from{transform:scale(.92)}to{transform:none}}
 
