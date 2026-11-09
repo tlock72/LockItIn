@@ -858,7 +858,7 @@ body.champ-on{overflow:hidden}
   color:#3A2600;background:linear-gradient(180deg,#FFE58A,#F2B21B);padding:clamp(12px,2vh,16px) 22px;border-radius:18px;box-shadow:0 14px 30px -12px rgba(255,190,40,.9),inset 0 -3px 0 rgba(0,0,0,.15)}
 .ch-next:focus-visible{outline:3px solid #fff;outline-offset:3px}
 .ch-next:active{transform:translateY(2px)}
-.ch-p2{max-width:760px;margin:0 auto;display:grid;gap:16px;align-content:start}
+.ch-p2{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:clamp(10px,2vh,18px)}
 .ch-top{display:flex;align-items:center;gap:12px}
 .ch-top h2{font-family:var(--f-display);font-size:clamp(26px,7vw,38px);font-weight:800;line-height:1.05;color:var(--chgold)}
 .ch-top p{opacity:.8;font-size:14px}
@@ -917,6 +917,53 @@ body.champ-on{overflow:hidden}
 }
 /* tablets and computers: the stats page gets room to breathe */
 @media (min-width:900px){
-  .ch-p2{gap:22px;padding-top:calc(env(safe-area-inset-top,0px) + 40px)}
-  .ch-tiles{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .ch-p2{padding-top:calc(env(safe-area-inset-top,0px) + 40px)}
 }
+
+/* takeover screens 2 and 3: each one fills the screen, no scrolling */
+.ch-dots{display:flex;justify-content:center;gap:8px;margin-top:clamp(2px,1vh,10px)}
+.ch-dots i{width:8px;height:8px;border-radius:999px;background:rgba(255,255,255,.35);transition:width .2s}
+.ch-dots i.on{width:24px;background:var(--chgold)}
+.ch-p2 > .ch-dots{margin-top:auto}
+.ch-p2 > .ch-next{margin-top:0}
+.ch-sub{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;opacity:.75;margin:0}
+/* leaderboard */
+.ch-lb .ch-stand{gap:clamp(10px,2vh,18px);padding:clamp(12px,2vh,20px) 14px}
+.ch-lb .ch-bar .av.m{--s:clamp(40px,6vh,56px)}
+.ch-who{flex:1;min-width:0;display:grid;gap:3px}
+.ch-who small{font-size:12px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-lb .ch-track{height:clamp(30px,4.6vh,40px)}
+.ch-lb .ch-bn{line-height:clamp(30px,4.6vh,40px);font-size:clamp(15px,2.2vh,18px)}
+.ch-lb .ch-bp{font-size:clamp(24px,3.8vh,34px);width:44px}
+.ch-games{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:10px}
+.ch-game{display:grid;justify-items:center;align-content:start;gap:4px;text-align:center;min-width:0;padding:12px 8px;border-radius:18px;
+  background:color-mix(in srgb,var(--gc) 22%,rgba(255,255,255,.06));border:1px solid color-mix(in srgb,var(--gc) 55%,transparent)}
+.ch-gn{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;max-width:100%;overflow:hidden;white-space:nowrap}
+.ch-gn svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.ch-game .chav .av + .av{margin-left:-14px}
+.ch-game b{font-family:var(--f-display);font-size:17px;color:var(--chgold);max-width:100%;overflow-wrap:anywhere;line-height:1.15}
+.ch-game small{font-size:12px;opacity:.8}
+/* best stats: six tiles stretch to fill the screen (2 across on phones, 3 on wider screens) */
+.ch-st .ch-tiles{flex:1;grid-auto-rows:minmax(0,1fr);gap:clamp(8px,1.4vh,14px)}
+.ch-st .ch-tile{align-content:center;padding:clamp(10px,1.8vh,18px) 14px}
+.ch-st .ch-te{font-size:clamp(26px,4.4vh,40px)}
+.ch-st .ch-tv{font-size:clamp(19px,3vh,28px)}
+@media (min-width:640px){.ch-st .ch-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:360px){.ch-st .ch-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.ch-st .ch-ts{font-size:12px}}
+/* short screens (phones on their side): tighter, so everything still fits */
+@media (max-height:540px){
+  .ch-p2{gap:8px}
+  .ch-lb .ch-stand{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px}
+  .ch-lb .ch-bar .av.m{--s:34px}
+  .ch-game{grid-template-columns:auto auto;justify-content:center;align-items:center;column-gap:8px;padding:8px}
+  .ch-gn{grid-column:1 / -1}
+  .ch-game small{display:none}
+  .ch-st .ch-te{display:none}
+  .ch-p2 .ch-top h2{font-size:22px}
+}
+.ch-who small{display:flex;gap:12px;align-items:center}
+.ch-who small span{display:inline-flex;align-items:center;gap:4px;font-weight:800}
+.ch-who small i{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+.ch-lb .ch-games + .ch-dots{margin-top:auto}
+@media (max-width:420px){.ch-gn svg{display:none}.ch-gn{letter-spacing:.02em}}
+.ch-p2 > .ch-next{align-self:center}

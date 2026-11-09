@@ -42,8 +42,13 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pad = (n) => String(n).padStart(2, "0");
 const ymd = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
-const todayStr = () => ymd(new Date());
-const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return ymd(d); };
+// LockItIn always runs on UK time (Europe/London), whatever time zone the device is in:
+// the day flips at UK midnight, weeks start on UK Monday, and times show as UK times.
+const UK = "Europe/London";
+const ukParts = () => Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: UK, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+const todayStr = () => { const p = ukParts(); return `${p.year}-${p.month}-${p.day}`; };
+const ukHour = () => +ukParts().hour % 24;
+const daysAgo = (n) => { const d = new Date(todayStr() + "T12:00:00"); d.setDate(d.getDate() - n); return ymd(d); };
 const nice = (d, opts) => new Date(d + "T12:00:00").toLocaleDateString(undefined, opts || { weekday: "long", month: "long", day: "numeric" });
 const fmt = (n) => (n == null || isNaN(n) ? "–" : (Math.round(n * 10) / 10).toLocaleString());
 const num = (s) => parseFloat(String(s).replace(/,/g, ""));
@@ -429,7 +434,7 @@ function render() {
 }
 
 function greeting() {
-  const h = new Date().getHours();
+  const h = ukHour();
   if (XMAS) return h < 5 ? "Up late like Santa" : h < 12 ? "Merry morning" : h < 17 ? "Jolly afternoon" : "Festive evening";
   return h < 5 ? "Up late" : h < 12 ? "Morning" : h < 17 ? "Afternoon" : "Evening";
 }
@@ -956,7 +961,7 @@ function breakdown(r) {
   return null;
 }
 const iPlayed = (gid, date) => scores.has(`${me.id}|${gid}|${date}`);
-const timeOf = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
+const timeOf = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZone: UK }); };
 function chatItem(id) {
   if (!id) return null;
   if (id.startsWith("score:")) {
@@ -1105,11 +1110,6 @@ function weekStats(ws) {
   const day = (d) => dayName(d, true);
   const top = (obj) => { const k = Object.keys(obj).filter((u) => obj[u] > 0).sort((a, b) => obj[b] - obj[a]); return k.length ? { uid: k[0], n: obj[k[0]], tied: k.filter((u) => obj[u] === obj[k[0]]) } : null; };
 
-  // Each game's champion of the week
-  for (const g of games) {
-    const c = top(Object.fromEntries(wr.rows.map((r) => [r.uid, r.by[g.id] || 0])));
-    if (c) T(g.id === "krillion" ? "🦐" : g.id === "maptap" ? "📍" : g.id === "timeguessr" ? "⏳" : "⭐", `${g.name} champ`, esc(listNames(c.tied)), `${c.n} ${c.n === 1 ? "day" : "days"} won`, c.tied.length === 1 ? c.uid : null);
-  }
   // Clean sweeps: one person won every game on a day
   if (games.length > 1) {
     const sweeps = [];
@@ -1195,7 +1195,12 @@ function weekStats(ws) {
   const last = wr.rows[wr.rows.length - 1];
   if (fam.length > 2 && last && last.rank > 1 && wr.rows.filter((r) => r.rank === last.rank).length === 1 && posted[last.uid])
     T("🥄", "Wooden spoon", esc(nameOf(last.uid)), `${ptsWord(last.pts)} · there's always next week!`, last.uid);
-  return out;
+  // Only the best few make the cut, so the stats screen is full but never a list to scroll through.
+  const ORDER = ["🧹", "🔥", "💥", "😬", "🌟", "🎯", "🥄", "📈", "💯", "🏮", "📅", "🌍", "💬", "🗓️", "🚀", "📆", "👨‍👩‍👧‍👦"];
+  const rank = (x) => { const i = ORDER.indexOf(x.emoji); return i < 0 ? 99 : i; };
+  const seen = new Set();
+  return out.map((x, i) => ({ ...x, i })).sort((a, b) => rank(a) - rank(b) || a.i - b.i)
+    .filter((x) => (x.emoji === "🚀" ? true : !seen.has(x.emoji) && seen.add(x.emoji))).slice(0, 6);
 }
 
 const champ = { ws: null, timers: [] };
@@ -1231,9 +1236,16 @@ function openChampion(ws) {
     : w.margin ? `won the week by <b>${w.margin}</b> ${w.margin === 1 ? "point" : "points"}!`
     : `won the week <b>on draws</b>!`;
   const by = Object.entries(w.top.by).sort((a, b) => b[1] - a[1]).map(([g, n]) => `${n} ${esc(gById(g)?.name || g)}`).join(" · ");
-  const rest = w.rows.filter((r) => !w.champs.includes(r.uid)).map((r) => `<span>${MEDAL[r.rank] || ordinal(r.rank)} ${esc(nameOf(r.uid))} <b>${r.pts}</b></span>`).join("");
   const max = Math.max(1, ...w.rows.map((r) => r.pts));
   const stats = weekStats(ws);
+  // each game's champion of the week: most days won in that game
+  const gameChamps = games.map((g) => {
+    const best = Math.max(0, ...w.rows.map((r) => r.by[g.id] || 0));
+    return { g, n: best, uids: best ? w.rows.filter((r) => (r.by[g.id] || 0) === best).map((r) => r.uid) : [] };
+  });
+  const dots = (n) => `<div class="ch-dots" aria-hidden="true">${[1, 2, 3].map((i) => `<i${i === n ? ' class="on"' : ""}></i>`).join("")}</div>`;
+  const top = (n, title, id) => `<div class="ch-top"><button type="button" class="ch-back" data-chgo="${n - 1}" aria-label="Back">‹</button>
+        <div><h2 id="${id}">${title}</h2><p>Week of ${weekLabel(ws)}</p></div></div>`;
   $("#champ").style.setProperty("--chc", safeColor(players[c0]?.color));
   $("#champ").innerHTML = `
     <section class="ch-p1" id="chP1" aria-labelledby="chTitle">
@@ -1250,20 +1262,30 @@ function openChampion(ws) {
         <div class="ch-by">${byLine}</div>
         <div class="ch-badge">${badge}</div>
         <div class="ch-pts"><b>${ptsWord(w.top.pts)}</b>${by ? ` · ${by}` : ""}</div>
-        ${rest ? `<div class="ch-rest">${rest}</div>` : ""}
-        <button type="button" class="ch-next" id="chNext">See the week in numbers →</button>
+        ${dots(1)}
+        <button type="button" class="ch-next" data-chgo="2">See the leaderboard →</button>
       </div>
     </section>
-    <section class="ch-p2" id="chP2" hidden aria-labelledby="chTitle2">
-      <div class="ch-top"><button type="button" class="ch-back" id="chBack" aria-label="Back to the champion">‹</button>
-        <div><h2 id="chTitle2">The week in numbers</h2><p>${weekLabel(ws)}</p></div></div>
+    <section class="ch-p2 ch-lb" id="chP2" hidden aria-labelledby="chTitle2">
+      ${top(2, "The final leaderboard", "chTitle2")}
       <div class="ch-stand">${w.rows.map((r) => `<div class="ch-bar${w.champs.includes(r.uid) ? " win" : ""}">
           <span class="ch-rk">${w.champs.includes(r.uid) ? "👑" : MEDAL[r.rank] || ordinal(r.rank)}</span>${av(r.uid, "m")}
-          <span class="ch-track"><span class="ch-fill" style="--w:${(r.pts / max).toFixed(3)};--c:${safeColor(players[r.uid]?.color)}"></span><span class="ch-bn">${esc(nameOf(r.uid))}</span></span>
+          <span class="ch-who"><span class="ch-track"><span class="ch-fill" style="--w:${(r.pts / max).toFixed(3)};--c:${safeColor(players[r.uid]?.color)}"></span><span class="ch-bn">${esc(nameOf(r.uid))}</span></span>
+            <small>${games.map((g) => r.by[g.id] ? `<span title="${esc(g.name)}"><i style="background:${gc(g.id)}"></i>${r.by[g.id]}</span>` : "").join("") || "No wins this week"}${r.draws ? `<span>🤝 ${r.draws}</span>` : ""}</small></span>
           <b class="ch-bp">${r.pts}</b></div>`).join("")}</div>
-      <div class="ch-tiles">${stats.map((s, i) => `<div class="ch-tile" style="--i:${i}">
+      <h3 class="ch-sub">Game champs</h3>
+      <div class="ch-games">${gameChamps.map(({ g, n, uids }) => `<div class="ch-game" style="--gc:${gc(g.id)}">
+          <span class="ch-gn">${icon(g.id)}${esc(g.name)}</span>
+          ${uids.length ? `<span class="chav">${uids.map((u) => av(u, "m")).join("")}</span><b>${esc(listNames(uids))}</b><small>${n} ${n === 1 ? "day" : "days"} won</small>` : `<b>Nobody</b><small>no wins</small>`}</div>`).join("")}</div>
+      ${dots(2)}
+      <button type="button" class="ch-next" data-chgo="3">See the best stats →</button>
+    </section>
+    <section class="ch-p2 ch-st" id="chP3" hidden aria-labelledby="chTitle3">
+      ${top(3, "The week in numbers", "chTitle3")}
+      <div class="ch-tiles n${stats.length}">${stats.map((s, i) => `<div class="ch-tile" style="--i:${i}">
           <span class="ch-te" aria-hidden="true">${s.emoji}</span><span class="ch-tl">${s.title}</span>
           <span class="ch-tv">${s.uid ? av(s.uid, "s") : ""}<span>${s.value}</span></span><span class="ch-ts">${s.sub}</span></div>`).join("")}</div>
+      ${dots(3)}
       <button type="button" class="ch-next" id="chDone">Bring on next week! 💪</button>
     </section>`;
   $("#champ").hidden = false; $("#champ").scrollTop = 0;
@@ -1271,11 +1293,13 @@ function openChampion(ws) {
   champ.timers.forEach(clearTimeout);
   champ.timers = [300, 2700, 5100].map((ms) => setTimeout(champConfetti, ms));
   if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 120]);
-  setTimeout(() => $("#chNext")?.focus({ preventScroll: true }), 50);
+  setTimeout(() => $("#chP1 .ch-next")?.focus({ preventScroll: true }), 50);
 }
+// Three screens: 1 the winner, 2 the leaderboard, 3 the best stats.
 function champPage(n) {
-  $("#chP1").hidden = n !== 1; $("#chP2").hidden = n !== 2; $("#champ").scrollTop = 0;
-  (n === 2 ? $("#chDone") : $("#chNext")).focus({ preventScroll: true });
+  for (const i of [1, 2, 3]) $("#chP" + i).hidden = i !== n;
+  $("#champ").scrollTop = 0;
+  $(`#chP${n} .ch-next`).focus({ preventScroll: true });
 }
 function closeChampion() {
   champ.timers.forEach(clearTimeout); champ.timers = [];
@@ -1636,8 +1660,8 @@ function wire() {
     const ch = t.closest("[data-champ]");
     if (ch) { openChampion(ch.dataset.champ); return; }
     if (t.closest("#chFace")) { champConfetti(); fanfare(); const f = $("#chFace"); f.classList.remove("boing"); void f.offsetWidth; f.classList.add("boing"); return; }
-    if (t.closest("#chNext")) { fanfare(); champPage(2); return; }
-    if (t.closest("#chBack")) { champPage(1); return; }
+    const go = t.closest("[data-chgo]");
+    if (go) { if (go.classList.contains("ch-next")) fanfare(); champPage(+go.dataset.chgo); return; }
     if (t.closest("#chDone")) { closeChampion(); return; }
     const pm = t.closest("#podMetric button");
     if (pm) { st.pm = pm.dataset.m; st.sort = null; save("lii.boardPm", st.pm); renderBoards(); return; }
@@ -1656,7 +1680,7 @@ function wire() {
   });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (!$("#champ").hidden) { if (!$("#chP2").hidden) champPage(1); return; } // the champion screen stays until tapped through
+    if (!$("#champ").hidden) { const at = [1, 2, 3].find((i) => !$("#chP" + i).hidden); if (at > 1) champPage(at - 1); return; } // the champion screens stay until tapped through
     closeSheets();
   });
 

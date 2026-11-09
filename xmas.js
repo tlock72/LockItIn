@@ -8,15 +8,20 @@ const $ = (s) => document.querySelector(s);
 const still = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* ---------- countdown ---------- */
+// UK date (Europe/London), like the rest of LockItIn
+function ukNow() {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "numeric", day: "numeric" }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return new Date(+p.year, +p.month - 1, +p.day, 12);
+}
 function sleeps() {
-  const now = new Date(), y = now.getFullYear();
+  const now = ukNow(), y = now.getFullYear();
   const today = new Date(y, now.getMonth(), now.getDate());
   let xmas = new Date(y, 11, 25);
   if (today > new Date(y, 11, 26)) xmas = new Date(y + 1, 11, 25);
   return Math.round((xmas - today) / 864e5);
 }
 function countdownHtml() {
-  const n = sleeps(), m = new Date().getMonth(), d = new Date().getDate();
+  const n = sleeps(), m = ukNow().getMonth(), d = ukNow().getDate();
   if (n === 0) return "🎄 <b>Merry Christmas,</b> everyone!";
   if (m === 11 && d === 26) return "🎁 Happy Boxing Day!";
   if (m === 11 && d > 26) return "✨ Happy holidays, family!";
