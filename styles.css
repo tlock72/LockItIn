@@ -843,7 +843,7 @@ textarea.comment{min-height:64px}
 
 /* ---------- Champion of the week: full-screen takeover ---------- */
 .av.xxl{--s:min(62vw,300px,36vh);box-shadow:0 0 0 6px #FFD95A,0 0 0 12px rgba(255,217,90,.35),0 0 80px 10px rgba(255,200,60,.55)}
-.champ{position:fixed;inset:0;z-index:60;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;color:#fff;
+.takeover{position:fixed;inset:0;z-index:60;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;color:#fff;
   --chc:#5B3DF5;--chgold:#FFD95A;
   background:radial-gradient(120% 75% at 50% 32%,var(--chc) 0%,#2A1670 48%,#0B0820 100%)}
 body.champ-on{overflow:hidden}
@@ -920,3 +920,13 @@ body.champ-on{overflow:hidden}
 @keyframes chrise{from{transform:translateY(18px);opacity:0}to{transform:none;opacity:1}}
 @keyframes chglow{0%,100%{box-shadow:0 0 0 6px #FFD95A,0 0 0 12px rgba(255,217,90,.35),0 0 60px 6px rgba(255,200,60,.45)}50%{box-shadow:0 0 0 6px #FFD95A,0 0 0 18px rgba(255,217,90,.2),0 0 110px 22px rgba(255,200,60,.7)}}
 @keyframes chgrow{from{width:0}}
+/* phones: the race is a slim two-row strip (who's leading + days left, then everyone's points) */
+@media (max-width:600px){
+  .weekrace{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 10px;padding:8px 12px}
+  .wr-t,.wr-r{display:contents}
+  .wr-t > b{display:none}
+  .wr-line{grid-column:1;grid-row:1;font-size:14px;font-weight:700;color:var(--ink)}
+  .wr-r small{display:block!important;grid-column:2;grid-row:1}
+  .wr-row{grid-column:1 / -1;grid-row:2;display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:6px}
+  .wr-p{justify-content:center;padding:2px 6px 2px 2px}
+}
