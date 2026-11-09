@@ -474,7 +474,6 @@ function renderToday() {
   $("#helloSub").textContent = `${nice(today)} · ${streak ? `🔥 ${streak}-day streak` : "Post a score to start a streak"}`;
   const winners = [...new Set(yesterdayResults().flatMap((x) => x.list.filter((e) => e.rank === 1).map((e) => e.uid)))];
   $("#yTease").textContent = winners.length ? `${listNames(winners)} ${winners.length === 1 ? "took the crown" : "took the crowns"}. Tap to see.` : "Nobody played yesterday. Tap to see.";
-  renderWeekRace();
 
   $("#cards").innerHTML = games.map((g) => {
     const { list, done, winners } = dayResult(g, today);
@@ -518,22 +517,6 @@ function renderToday() {
     </article>`;
   }).join("");
   st.flipAnim = null;
-}
-
-// Today: the race for this week's crown, always in view. Tap it for the weekly leaderboard.
-function renderWeekRace() {
-  const ws = weekStart(), wr = weekResult(ws), today = todayStr();
-  const left = 7 - Math.round((new Date(today + "T12:00:00") - new Date(ws + "T12:00:00")) / 864e5);
-  const lead = wr.champs, any = wr.rows.some((r) => r.pts > 0);
-  const last = weekResult(addDays(ws, -7));
-  const early = left >= 6 && last.champs.length; // Monday and Tuesday: remember last week's champion
-  const line = early && !any ? `👑 ${esc(listNames(last.champs))} won last week. New week, new crown!`
-    : !any ? "Fresh week, everyone on zero. Go get it!"
-    : lead.length === 1 ? `👑 <b>${esc(nameOf(lead[0]))}</b> leads by ${ptWord(wr.margin)}`
-    : `🤝 <b>${esc(listNames(lead))}</b> level on ${ptsWord(wr.top.pts)}`;
-  const chips = wr.rows.map((r) => `<span class="wr-p${any && r.rank === 1 ? " lead" : ""}${r.uid === me.id ? " me" : ""}" title="${esc(nameOf(r.uid))}: ${ptsWord(r.pts)}">${av(r.uid, "s")}<b>${r.pts}</b></span>`).join("");
-  $("#weekRace").innerHTML = `<span class="wr-t"><b>🏁 This week's race</b><span class="wr-line">${line}</span></span>
-    <span class="wr-r"><span class="wr-row">${chips}</span><small>${left === 1 ? "Final day!" : `${left} days left`}</small></span>`;
 }
 
 function sortHead(k, label, active) {
@@ -1255,17 +1238,21 @@ function openChampion(ws) {
   $("#champ").innerHTML = `
     <section class="ch-p1" id="chP1" aria-labelledby="chTitle">
       <div class="ch-rays" aria-hidden="true"></div>
-      <div class="ch-kicker">Week of ${weekLabel(ws)}</div>
-      <h1 class="ch-title" id="chTitle">${XMAS ? "🎅 " : ""}Champion of the week!</h1>
+      <div class="ch-hd">
+        <div class="ch-kicker">Week of ${weekLabel(ws)}</div>
+        <h1 class="ch-title" id="chTitle">${XMAS ? "🎅 " : ""}Champion of the week!</h1>
+      </div>
       <button type="button" class="ch-face${many ? " many" : ""}" id="chFace" aria-label="Celebrate again">
         <span class="ch-crown" aria-hidden="true">👑</span>${w.champs.map((u) => av(u, "xxl")).join("")}
       </button>
-      <div class="ch-name">${esc(listNames(w.champs))}</div>
-      <div class="ch-by">${byLine}</div>
-      <div class="ch-badge">${badge}</div>
-      <div class="ch-pts"><b>${ptsWord(w.top.pts)}</b>${by ? ` · ${by}` : ""}</div>
-      ${rest ? `<div class="ch-rest">${rest}</div>` : ""}
-      <button type="button" class="ch-next" id="chNext">See the week in numbers →</button>
+      <div class="ch-txt">
+        <div class="ch-name">${esc(listNames(w.champs))}</div>
+        <div class="ch-by">${byLine}</div>
+        <div class="ch-badge">${badge}</div>
+        <div class="ch-pts"><b>${ptsWord(w.top.pts)}</b>${by ? ` · ${by}` : ""}</div>
+        ${rest ? `<div class="ch-rest">${rest}</div>` : ""}
+        <button type="button" class="ch-next" id="chNext">See the week in numbers →</button>
+      </div>
     </section>
     <section class="ch-p2" id="chP2" hidden aria-labelledby="chTitle2">
       <div class="ch-top"><button type="button" class="ch-back" id="chBack" aria-label="Back to the champion">‹</button>
@@ -1646,10 +1633,6 @@ function wire() {
     if (per) { st.period = per.dataset.p; st.wk = 0; renderBoards(); return; }
     if (t.closest("#wkPrev")) { st.wk++; renderBoards(); return; }
     if (t.closest("#wkNext")) { st.wk = Math.max(0, st.wk - 1); renderBoards(); return; }
-    if (t.closest("#weekRace")) {
-      st.flipped.clear(); st.tab = "boards"; st.game = "all"; st.period = "week"; st.wk = 0; st.sort = null;
-      $("#scroller").scrollTop = 0; render(); return;
-    }
     const ch = t.closest("[data-champ]");
     if (ch) { openChampion(ch.dataset.champ); return; }
     if (t.closest("#chFace")) { champConfetti(); fanfare(); const f = $("#chFace"); f.classList.remove("boing"); void f.offsetWidth; f.classList.add("boing"); return; }
