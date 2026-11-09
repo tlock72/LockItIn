@@ -669,6 +669,21 @@ textarea.comment{min-height:64px}
 .replybar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .replybar b{color:var(--ink)}
 #replyX{font:inherit;font-size:20px;line-height:1;background:var(--soft);border:0;border-radius:999px;width:28px;height:28px;cursor:pointer;color:var(--ink);flex:none}
+/* Score breakdowns and spoilers in the day chat */
+.bb p.brk{font-size:15px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+.bb p.brk + p{margin-top:4px}
+.stag.sp{background:color-mix(in srgb,#7c3aed 16%,transparent);color:#7c3aed}
+.stag + .stag.sp{margin-left:4px}
+.bub.spoil:not(.me) .bb{background:color-mix(in srgb,#7c3aed 10%,var(--soft));border:1px dashed color-mix(in srgb,#7c3aed 45%,transparent)}
+.bub.me.spoil .bb{background:repeating-linear-gradient(135deg,var(--gc) 0 12px,color-mix(in srgb,var(--gc) 86%,#000) 12px 24px)}
+.bub.me .stag.sp{background:rgba(255,255,255,.24);color:#fff}
+.spoilwall{margin:14px auto 4px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:14px 16px;border-radius:16px;border:1px dashed var(--line);color:var(--muted);font-weight:700;max-width:340px}
+.spoilwall .btn{width:auto;padding:8px 18px;background:var(--gc)}
+.spoilopt{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer}
+.spoilopt input{width:18px;height:18px;accent-color:var(--gc);flex:none;margin:0}
+.spoilbtn{flex:none;width:44px;height:44px;border-radius:999px;border:2px solid var(--line);background:var(--soft);font-size:20px;line-height:1;cursor:pointer;filter:grayscale(1);opacity:.7;padding:0}
+.spoilbtn[aria-pressed="true"]{filter:none;opacity:1;border-color:#7c3aed;background:color-mix(in srgb,#7c3aed 14%,var(--soft))}
+.chatbar.spoiling .chatrow textarea{border-color:#7c3aed}
 @media (prefers-reduced-motion:no-preference){.bub.focus .bb{animation:cpop .45s cubic-bezier(.2,1.4,.4,1) both}}
 @keyframes cpop{from{transform:scale(.92)}to{transform:none}}
 

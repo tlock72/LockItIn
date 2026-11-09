@@ -251,9 +251,29 @@ create table if not exists messages (
   created_at timestamptz not null default now()
 );
 create index if not exists messages_day on messages (game_id, play_date);
+-- Spoiler messages talk about the day's answers. Only people who have locked in a score for that game
+-- and day (and whoever wrote it) can read them; everyone else just sees how many are waiting.
+alter table messages add column if not exists spoiler boolean not null default false;
 alter table messages enable row level security;
+
+create or replace function i_played(p_game text, p_date date) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from scores where player_id = my_player_id() and game_id = p_game and play_date = p_date)
+$$;
+-- How many spoiler messages are hidden from me, per game and day.
+create or replace function hidden_spoilers(p_from date) returns table (game_id text, play_date date, n int)
+language sql stable security definer set search_path = public as $$
+  select m.game_id, m.play_date, count(*)::int from messages m
+  where my_player_id() is not null and m.spoiler and m.play_date >= p_from and m.player_id <> my_player_id()
+    and not exists (select 1 from scores s where s.player_id = my_player_id() and s.game_id = m.game_id and s.play_date = m.play_date)
+  group by m.game_id, m.play_date
+$$;
+revoke all on function i_played(text, date), hidden_spoilers(date) from public, anon;
+grant execute on function i_played(text, date), hidden_spoilers(date) to authenticated;
+
 drop policy if exists messages_read on messages;
-create policy messages_read on messages for select to authenticated using (my_player_id() is not null);
+create policy messages_read on messages for select to authenticated
+  using (my_player_id() is not null and (not spoiler or player_id = my_player_id() or i_played(game_id, play_date)));
 drop policy if exists messages_write_own on messages;
 create policy messages_write_own on messages for insert to authenticated with check (player_id = my_player_id());
 drop policy if exists messages_delete_own on messages;

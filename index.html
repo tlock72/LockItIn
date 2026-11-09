@@ -213,6 +213,7 @@
       <div class="field">
         <div class="row between"><label class="label" for="comment">Add a comment <span class="opt">(optional)</span></label><span class="note" id="commentLeft"></span></div>
         <textarea id="comment" class="comment" maxlength="280" rows="2" placeholder="Brag, moan or blame the map…"></textarea>
+        <label class="spoilopt"><input type="checkbox" id="commentSpoil" checked> <span>🙈 Spoiler: only people who've played today can see it</span></label>
       </div>
       <button class="btn big" id="save" type="button">Lock it in 🎁</button>
       <p class="msg" id="msg" role="status"></p>
@@ -242,6 +243,7 @@
     <form class="chatbar" id="chatForm">
       <div class="replybar" id="replyBar" hidden><span id="replyTo"></span><button type="button" id="replyX" aria-label="Cancel reply">×</button></div>
       <div class="chatrow">
+        <button class="spoilbtn" id="chatSpoil" type="button" aria-pressed="false" aria-label="Spoiler: only people who've played see it" title="Spoiler: only people who've played see it">🙈</button>
         <textarea id="chatText" rows="1" maxlength="500" placeholder="Say something…" aria-label="Message"></textarea>
         <button class="btn" id="chatSend" type="submit" disabled aria-label="Send">Send</button>
       </div>

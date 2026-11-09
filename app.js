@@ -21,6 +21,7 @@ let games = [], allGames = [];
 let players = {};             // id -> player
 let scores = new Map();       // "player|game|date" -> row
 let msgs = new Map();         // chat message id -> row (the last two weeks)
+let hidden = {};              // "game|date" -> how many spoiler messages are hidden from me (I haven't played yet)
 let pendingShare = null;
 let pendingComment = null;    // "game|date|player" or "game|date|<message id>" from a tapped chat notification
 let adminDirty = false;
@@ -434,7 +435,7 @@ function renderToday() {
     const flip = won
       ? `<button class="flip" type="button" data-flip="${esc(g.id)}" aria-label="${showWin ? "Show today's result" : "Show the day's winner"}">${showWin ? `<span class="lg">Today's result</span><span class="sm">Result</span>` : `<span class="lg">🏆 Winner</span><span class="sm">🏆</span>`}<span class="fi" aria-hidden="true">↻</span></button>`
       : "";
-    const nc = chatItems(g.id, today).length;
+    const nc = talkCount(g.id, today);
     const talk = `<button class="talk${nc ? "" : " none"}" type="button" data-comments="${esc(g.id)}" aria-label="Today's ${esc(g.name)} chat${nc ? `, ${nc} ${nc === 1 ? "message" : "messages"}` : ""}">💬${nc ? ` ${nc}` : ""}</button>`;
     const cls = `gcard${won ? " decided" : ""}${showWin ? " showwin" : ""}${st.flipAnim === g.id ? " flipping" : ""}`;
     if (showWin) {
@@ -769,17 +770,17 @@ function watchForUpdates() {
   setInterval(() => { if (document.visibilityState === "visible") checkForUpdate(); }, 90000);
 }
 
-function openPost(gid, text) {
+function openPost(gid, text, date) {
   st.post = gid || st.post || games[0].id;
   st.krill = st.rounds = null;
   $("#paste").value = text || ""; $("#score").value = "";
   st.commentFor = null; $("#msg").textContent = ""; $("#msg").className = "msg";
-  $("#date").value = todayStr(); $("#date").max = todayStr();
+  $("#date").value = date || todayStr(); $("#date").max = todayStr();
   renderPostGame();
   fillComment();
   openSheet("#postSheet");
   if (text) onPasteText(text); else {
-    const existing = scores.get(`${me.id}|${st.post}|${todayStr()}`);
+    const existing = scores.get(`${me.id}|${st.post}|${$("#date").value}`);
     if (existing) $("#score").value = existing.score;
   }
 }
@@ -788,7 +789,11 @@ function fillComment() {
   const k = `${me.id}|${st.post}|${$("#date").value || todayStr()}`;
   if (st.commentFor === k) return;
   st.commentFor = k;
-  $("#comment").value = scores.get(k)?.comment || "";
+  const old = scores.get(k)?.comment || "";
+  $("#comment").value = old;
+  // A comment you post with your score is a spoiler unless you say otherwise (it's usually about the answers).
+  // One you already posted as a normal comment stays normal.
+  $("#commentSpoil").checked = !old;
   commentLeft();
 }
 function commentLeft() {
@@ -804,20 +809,33 @@ function renderPostGame() {
 /* ---------- day chat ---------- */
 // Each game has a running chat for each day: score comments (from Lock in) plus chat messages, oldest first.
 // Item ids: a message's own id, or "score:<player id>" for a score comment. Replies point at either.
+// Every locked-in score shows up with its breakdown (no notification for that); its comment, if any, rides along.
 function chatItems(gid, date) {
   const out = [];
-  for (const r of rowsFor(gid, date)) if (r.play_date === date && r.comment)
-    out.push({ id: `score:${r.player_id}`, uid: r.player_id, body: r.comment, at: r.comment_at || r.created_at || "", score: Number(r.score) });
+  for (const r of rowsFor(gid, date)) if (r.play_date === date)
+    out.push({ id: `score:${r.player_id}`, uid: r.player_id, body: r.comment || "", line: breakdown(r), at: (r.comment && r.comment_at) || r.created_at || "", score: Number(r.score) });
   for (const m of msgs.values()) if (m.game_id === gid && m.play_date === date)
-    out.push({ id: m.id, uid: m.player_id, body: m.body, at: m.created_at || "", reply: m.reply_to, msg: true });
+    out.push({ id: m.id, uid: m.player_id, body: m.body, at: m.created_at || "", reply: m.reply_to, msg: true, spoiler: !!m.spoiler });
   return out.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 }
+// What people actually said (score comments and messages), plus spoilers still hidden from me. For the 💬 count.
+const talkCount = (gid, date) => chatItems(gid, date).filter((e) => e.body).length + (hidden[`${gid}|${date}`] || 0);
+// A score as the chat shows it: Krillion's 7 answer emojis, or the points for each MapTap / TimeGuessr round, "= score".
+function breakdown(r) {
+  const d = (r && r.details) || {}, total = `= ${fmt(Number(r.score))}`;
+  if (r.game_id === "krillion" && d.line) return `${graphemes(d.line).slice(0, 7).join("")} ${total}`;
+  const rs = Array.isArray(d.rounds) ? d.rounds : [];
+  if (r.game_id === "maptap" && rs.length) return `${rs.map((x) => fmt(x)).join(" · ")} ${total}`;
+  if (r.game_id === "timeguessr" && rs.some((x) => x && x.score != null)) return `${rs.map((x) => fmt(x && x.score)).join(" · ")} ${total}`;
+  return null;
+}
+const iPlayed = (gid, date) => scores.has(`${me.id}|${gid}|${date}`);
 const timeOf = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); };
 function chatItem(id) {
   if (!id) return null;
   if (id.startsWith("score:")) {
     const r = st.chat && scores.get(`${id.slice(6)}|${st.chat.gid}|${st.chat.date}`);
-    return r && r.comment ? { id, uid: r.player_id, body: r.comment } : null;
+    return r ? { id, uid: r.player_id, body: r.comment || breakdown(r) || `🔒 ${fmt(Number(r.score))}` } : null;
   }
   const m = msgs.get(id);
   return m ? { id, uid: m.player_id, body: m.body } : null;
@@ -832,8 +850,9 @@ function openComments(gid, date, focus) {
   $("#cDate").textContent = date === todayStr() ? `Today · ${nice(date, { month: "long", day: "numeric" })}` : nice(date);
   renderChat();
   if ($("#cSheet").hidden) openSheet("#cSheet");
-  if (fresh) $("#chatText").value = "";
+  if (fresh) { $("#chatText").value = ""; setChatSpoiler(false); }
   chatGrow();
+  loadHidden().then(() => { if (st.chat && st.chat.gid === gid && !$("#cSheet").hidden) renderChat(); renderToday(); });
   const f = $("#cBody .bub.focus");
   setTimeout(() => (f ? f.scrollIntoView({ block: "center", behavior: "smooth" }) : chatBottom()), 60);
 }
@@ -844,20 +863,25 @@ function renderChat() {
   const ranked = rankDay(rowsFor(gid, date).filter((r) => r.play_date === date).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g);
   let prev = null;
   $("#cBody").innerHTML = items.length ? items.map((e) => {
-    const mine = e.uid === me.id, cont = prev && prev.uid === e.uid && !e.score; prev = e;
+    const isScore = e.score != null, mine = e.uid === me.id, cont = prev && prev.uid === e.uid && !isScore; prev = e;
     const q = chatItem(e.reply);
     const quote = e.reply ? `<div class="quote"><b>${q ? esc(q.uid === me.id ? "You" : nameOf(q.uid)) : ""}</b> ${q ? esc(q.body.length > 70 ? q.body.slice(0, 69) + "…" : q.body) : "<i>Deleted message</i>"}</div>` : "";
-    const rk = e.score != null ? ranked.find((x) => x.uid === e.uid) : null;
-    const tagS = e.score != null ? `<span class="stag">🔒 ${fmt(e.score)}${rk && ranked.length > 1 ? ` · ${MEDAL[rk.rank] || "#" + rk.rank}` : ""}</span>` : "";
-    return `<div class="bub${mine ? " me" : ""}${cont ? " cont" : ""}${e.id === focus ? " focus" : ""}" data-mid="${esc(e.id)}">
+    const rk = isScore ? ranked.find((x) => x.uid === e.uid) : null;
+    const tagS = isScore ? `<span class="stag">🔒 ${e.line ? "Locked in" : fmt(e.score)}${rk && ranked.length > 1 ? ` · ${MEDAL[rk.rank] || "#" + rk.rank}` : ""}</span>` : "";
+    const tagSp = e.spoiler ? `<span class="stag sp">🙈 Spoiler</span>` : "";
+    const brk = e.line ? `<p class="brk">${esc(e.line)}</p>` : "";
+    return `<div class="bub${mine ? " me" : ""}${cont ? " cont" : ""}${isScore ? " score" : ""}${e.spoiler ? " spoil" : ""}${e.id === focus ? " focus" : ""}" data-mid="${esc(e.id)}">
       ${mine ? "" : `<span class="bav">${cont ? "" : av(e.uid, "s")}</span>`}
       <div class="bwrap">
         ${cont || mine ? "" : `<div class="bname">${esc(nameOf(e.uid))}</div>`}
-        <div class="bb">${quote}${tagS}<p>${esc(e.body)}</p></div>
+        <div class="bb">${quote}${tagS}${tagSp}${brk}${e.body ? `<p>${esc(e.body)}</p>` : ""}</div>
         <div class="bmeta"><span>${esc(timeOf(e.at))}</span><button type="button" class="blink" data-reply="${esc(e.id)}">Reply</button>${mine && e.msg ? `<button type="button" class="blink" data-delmsg="${esc(e.id)}">Delete</button>` : ""}</div>
       </div>
     </div>`;
   }).join("") : `<div class="yempty">No chat on ${esc(g.name)} yet. Say something! 🦗</div>`;
+  // Spoilers wait behind your own score: you see how many there are, and a button to lock in.
+  const nh = hidden[`${gid}|${date}`] || 0;
+  if (nh && !iPlayed(gid, date)) $("#cBody").insertAdjacentHTML("beforeend", `<div class="spoilwall"><span>🙈 ${nh} spoiler ${nh === 1 ? "message is" : "messages are"} hidden until you've played.</span><button class="btn" type="button" data-lockin="${esc(gid)}">Lock in my score</button></div>`);
   const r = chatItem(reply);
   $("#replyBar").hidden = !r;
   if (r) $("#replyTo").innerHTML = `Replying to <b>${esc(r.uid === me.id ? "yourself" : nameOf(r.uid))}</b>: ${esc(r.body.length > 60 ? r.body.slice(0, 59) + "…" : r.body)}`;
@@ -868,12 +892,22 @@ async function sendChat() {
   if (!body || !st.chat) return;
   const { gid, date, reply } = st.chat;
   $("#chatSend").disabled = true;
-  const { data, error } = await sb.from("messages").insert({ game_id: gid, play_date: date, player_id: me.id, body: body.slice(0, 500), reply_to: reply || null }).select().single();
+  const row = { game_id: gid, play_date: date, player_id: me.id, body: body.slice(0, 500), reply_to: reply || null };
+  if (st.chatSpoiler) row.spoiler = true;
+  const { data, error } = await sb.from("messages").insert(row).select().single();
   if (error) { $("#chatSend").disabled = false; toast(errText(error, "Couldn't send that. Check your connection.")); return; }
   msgs.set(data.id, data);
-  t.value = ""; st.chat.reply = null; st.chat.focus = null; chatGrow();
+  t.value = ""; st.chat.reply = null; st.chat.focus = null; setChatSpoiler(false); chatGrow();
   renderChat(); renderToday(); chatBottom();
   callNotify({ type: "message", id: data.id }).catch(() => {});
+}
+// The 🙈 button in the chat bar: the next message is a spoiler, only for people who've played.
+function setChatSpoiler(on) {
+  st.chatSpoiler = !!on;
+  const b = $("#chatSpoil");
+  b.setAttribute("aria-pressed", String(st.chatSpoiler));
+  $("#chatForm").classList.toggle("spoiling", st.chatSpoiler);
+  $("#chatText").placeholder = st.chatSpoiler ? "Spoiler: only people who've played will see it…" : "Say something…";
 }
 async function deleteChat(id) {
   if (!confirm("Delete this message?")) return;
@@ -887,7 +921,7 @@ function announceMsg(m) {
   const open = st.chat && !$("#cSheet").hidden && st.chat.gid === m.game_id && st.chat.date === m.play_date;
   if (open) { renderChat(); const sh = $("#cSheet .sheet"); if (sh.scrollHeight - sh.scrollTop - sh.clientHeight < 200) chatBottom(); }
   const tgt = m.reply_to ? (m.reply_to.startsWith("score:") ? m.reply_to.slice(6) : msgs.get(m.reply_to)?.player_id) : null;
-  const head = tgt === me.id ? `↩️ ${nameOf(m.player_id)} replied to you` : `💬 ${nameOf(m.player_id)} in the ${g.name} chat`;
+  const head = (tgt === me.id ? `↩️ ${nameOf(m.player_id)} replied to you` : `💬 ${nameOf(m.player_id)} in the ${g.name} chat`) + (m.spoiler ? " 🙈" : "");
   const body = m.body.length > 120 ? m.body.slice(0, 119) + "…" : m.body;
   if (!open) toast(`${head}: “${clip(m.body, 60)}”`, true);
   localNotify(head, body, `chat-${g.id}-${m.play_date}`, `./?comment=${encodeURIComponent(`${g.id}|${m.play_date}|${m.id}`)}`);
@@ -1051,11 +1085,21 @@ async function loadPlayers() {
   if (me && players[me.id]) me = { ...me, ...players[me.id] };
   await resolvePhotos();
 }
+// The last two weeks of chat. Spoilers only come back for days and games you've played (the database checks).
+async function loadMsgs() {
+  const r = await sb.from("messages").select("*").gte("play_date", daysAgo(14)).order("created_at");
+  if (!r.error) msgs = new Map(r.data.map((m) => [m.id, m]));
+}
+async function loadHidden() {
+  const r = await sb.rpc("hidden_spoilers", { p_from: daysAgo(14) });
+  if (!r.error) hidden = Object.fromEntries((r.data || []).map((x) => [`${x.game_id}|${x.play_date}`, x.n]));
+}
 async function loadAll() {
   const [g] = await Promise.all([
     sb.from("games").select("*").order("sort").then((r) => { if (r.error) throw r.error; return r.data; }),
     loadPlayers(),
-    sb.from("messages").select("*").gte("play_date", daysAgo(14)).order("created_at").then((r) => { if (!r.error) msgs = new Map(r.data.map((m) => [m.id, m])); }),
+    loadMsgs(),
+    loadHidden(),
     fetchAll("scores", "player_id,game_id,play_date,score,details,comment,comment_at,created_at").then((s) => { scores = new Map(s.map((r) => [key(r), tidyKrill(r)])); }),
   ]);
   allGames = g; games = g.filter((x) => x.active);
@@ -1078,6 +1122,7 @@ function subscribe() {
       }
       checkWins(); render();
       if (st.chat && !$("#cSheet").hidden) renderChat();
+      clearTimeout(st.hidT); st.hidT = setTimeout(() => loadHidden().then(renderToday).catch(() => {}), 800);
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "players" }, () => loadPlayers().then(render).catch(() => {}))
     .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (p) => {
@@ -1150,7 +1195,8 @@ async function saveScore() {
   if (date > todayStr()) return fail("That date hasn't happened yet!");
   const mineBefore = rowsFor(g.id).filter((r) => r.player_id === me.id && r.play_date !== date).map((r) => Number(r.score));
   const pb = mineBefore.length && mineBefore.every((s) => better(g, v, s));
-  const comment = $("#comment").value.trim().slice(0, 280) || null;
+  const said = $("#comment").value.trim().slice(0, 280) || null, spoil = !!said && $("#commentSpoil").checked;
+  const comment = spoil ? null : said;
   const old = scores.get(`${me.id}|${g.id}|${date}`);
   const comment_at = !comment ? null : old && old.comment === comment ? old.comment_at || null : new Date().toISOString();
   const row = { player_id: me.id, game_id: g.id, play_date: date, score: v, details: null, comment, comment_at };
@@ -1163,13 +1209,21 @@ async function saveScore() {
   const { error } = await sb.from("scores").upsert(row, { onConflict: "player_id,game_id,play_date" });
   $("#save").disabled = false;
   if (error) return fail(errText(error, "Couldn't save. Check your connection and try again."));
-  scores.set(key(row), row);
+  scores.set(key(row), { ...row, created_at: old?.created_at || new Date().toISOString() });
   tellFamily(row);
+  // A spoiler comment goes into the day's chat as a spoiler message, and now that you've played,
+  // any spoilers that were hidden from you come through.
+  if (spoil) {
+    const { data, error: e2 } = await sb.from("messages").insert({ game_id: g.id, play_date: date, player_id: me.id, body: said, spoiler: true }).select().single();
+    if (e2) toast(errText(e2, "Score saved, but the comment didn't send. Try it in the chat."));
+    else { msgs.set(data.id, data); callNotify({ type: "message", id: data.id }).catch(() => {}); }
+  }
+  Promise.all([loadMsgs(), loadHidden()]).then(() => { renderToday(); if (st.chat && !$("#cSheet").hidden) renderChat(); }).catch(() => {});
   const dayList = rankDay(rowsFor(g.id).filter((r) => r.play_date === date).map((r) => ({ uid: r.player_id, s: Number(r.score) })), g);
   const mine = dayList.find((e) => e.uid === me.id);
   const leading = mine && mine.rank === 1 && dayList.length > 1;
   closeSheets();
-  if (comment && !pb && !leading) toast(`${g.name} locked in: ${fmt(v)} 🔒 · 💬 comment posted`); else
+  if (said && !pb && !leading) toast(`${g.name} locked in: ${fmt(v)} 🔒 · ${spoil ? "🙈 spoiler" : "💬 comment"} posted`); else
   toast(XMAS
     ? (pb ? `Ho Ho Ho! New personal best in ${g.name}! 🎁` : leading ? `Ho Ho Ho! You're top of the family in ${g.name}! 🎅` : `Ho Ho Ho! ${g.name} locked in: ${fmt(v)} 🎁`)
     : (pb ? `New personal best in ${g.name}! 🎉` : leading ? `You're top of the family in ${g.name}! 👑` : `${g.name} locked in: ${fmt(v)} 🔒`));
@@ -1225,6 +1279,9 @@ function wire() {
     const dm = t.closest("[data-delmsg]");
     if (dm) { deleteChat(dm.dataset.delmsg); return; }
     if (t.closest("#replyX")) { st.chat.reply = null; renderChat(); return; }
+    if (t.closest("#chatSpoil")) { setChatSpoiler(!st.chatSpoiler); $("#chatText").focus(); return; }
+    const li = t.closest("[data-lockin]");
+    if (li) { const d = st.chat.date; closeSheets(); openPost(li.dataset.lockin, "", d); return; }
     if (t.closest("[data-close]") || t.classList.contains("sheet-wrap")) { closeSheets(); return; }
     const gp = t.closest("[data-game]");
     if (gp) { st.game = gp.dataset.game; st.sort = null; save("lii.board", st.game); renderBoards(); return; }

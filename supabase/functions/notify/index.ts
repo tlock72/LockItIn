@@ -146,25 +146,30 @@ async function endOfDay() {
 
 // A chat message: tell everyone else. Whoever it replies to gets "Mum replied to you".
 async function onMessage(me: string, id: string) {
-  const { data: m } = await db.from("messages").select("id, game_id, play_date, player_id, body, reply_to").eq("id", id).maybeSingle();
+  const { data: m } = await db.from("messages").select("id, game_id, play_date, player_id, body, reply_to, spoiler").eq("id", id).maybeSingle();
   if (!m || m.player_id !== me || !(await once(`msg|${m.id}`))) return { sent: 0 };
-  const [game, people, subs, target] = await Promise.all([
+  const [game, people, subs, target, played] = await Promise.all([
     db.from("games").select("name").eq("id", m.game_id).maybeSingle(),
     db.from("players").select("id, name"),
     db.from("push_subs").select("endpoint, player_id, sub"),
     m.reply_to && !String(m.reply_to).startsWith("score:")
       ? db.from("messages").select("player_id").eq("id", m.reply_to).maybeSingle()
       : Promise.resolve({ data: m.reply_to ? { player_id: String(m.reply_to).slice(6) } : null }),
+    m.spoiler
+      ? db.from("scores").select("player_id").eq("game_id", m.game_id).eq("play_date", m.play_date)
+      : Promise.resolve({ data: null }),
   ]);
-  const fam = people.data || [], all = ((subs.data || []) as Sub[]).filter((s) => s.player_id !== me);
+  // A spoiler only goes to people who have already played that game today; nobody else can read it yet.
+  const ok = played.data ? new Set((played.data as { player_id: string }[]).map((r) => r.player_id)) : null;
+  const fam = people.data || [], all = ((subs.data || []) as Sub[]).filter((s) => s.player_id !== me && (!ok || ok.has(s.player_id)));
   const nameOf = (pid: string) => fam.find((p) => p.id === pid)?.name || "Someone";
   const to = (target.data as { player_id?: string } | null)?.player_id;
   const body = m.body.length > 140 ? m.body.slice(0, 139) + "…" : m.body;
   const base = { body, tag: `chat-${m.game_id}-${m.play_date}`, url: `./?comment=${encodeURIComponent(`${m.game_id}|${m.play_date}|${m.id}`)}` };
-  const gname = game.data?.name || "game";
+  const gname = game.data?.name || "game", sp = m.spoiler ? " 🙈 spoiler" : "";
   let sent = 0;
-  if (to && to !== me) sent += await send(all.filter((s) => s.player_id === to), { ...base, title: `↩️ ${nameOf(me)} replied to you in ${gname}` });
-  sent += await send(all.filter((s) => s.player_id !== to || to === me), { ...base, title: `💬 ${nameOf(me)} in the ${gname} chat` });
+  if (to && to !== me) sent += await send(all.filter((s) => s.player_id === to), { ...base, title: `↩️ ${nameOf(me)} replied to you in ${gname}${sp}` });
+  sent += await send(all.filter((s) => s.player_id !== to || to === me), { ...base, title: `💬 ${nameOf(me)} in the ${gname} chat${sp}` });
   return { sent };
 }
 
