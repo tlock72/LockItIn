@@ -813,7 +813,7 @@ function renderPostGame() {
 function chatItems(gid, date) {
   const out = [];
   for (const r of rowsFor(gid, date)) if (r.play_date === date)
-    out.push({ id: `score:${r.player_id}`, uid: r.player_id, body: r.comment || "", line: breakdown(r), at: (r.comment && r.comment_at) || r.created_at || "", score: Number(r.score) });
+    out.push({ id: `score:${r.player_id}`, uid: r.player_id, body: r.comment || "", line: breakdown(r), tg: r.game_id === "timeguessr" && r.details && Array.isArray(r.details.rounds) ? r.details.rounds : null, at: (r.comment && r.comment_at) || r.created_at || "", score: Number(r.score) });
   for (const m of msgs.values()) if (m.game_id === gid && m.play_date === date)
     out.push({ id: m.id, uid: m.player_id, body: m.body, at: m.created_at || "", reply: m.reply_to, msg: true, spoiler: !!m.spoiler });
   return out.sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
@@ -821,6 +821,12 @@ function chatItems(gid, date) {
 // What people actually said (score comments and messages), plus spoilers still hidden from me. For the 💬 count.
 const talkCount = (gid, date) => chatItems(gid, date).filter((e) => e.body).length + (hidden[`${gid}|${date}`] || 0);
 // A score as the chat shows it: Krillion's 7 answer emojis, or the points for each MapTap / TimeGuessr round, "= score".
+// TimeGuessr in the chat: a row per round with years off, distance and points, then the total.
+const fmtDist = (km) => (km == null ? "–" : km < 1 ? `${Math.round(km * 1000).toLocaleString()} m` : fmtKm(km));
+function tgTable(rounds, total) {
+  const rows = rounds.map((x, i) => `<tr><td>${i + 1}</td><td>${x && x.years != null ? `${fmt(x.years)}y` : "–"}</td><td>${esc(fmtDist(x && x.km))}</td><td>${fmt(x && x.score)}</td></tr>`).join("");
+  return `<table class="tgt"><thead><tr><td></td><td title="Years off">📅</td><td title="Distance off">🌍</td><td title="Points">🏆</td></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3"></td><td>= ${fmt(total)}</td></tr></tfoot></table>`;
+}
 function breakdown(r) {
   const d = (r && r.details) || {}, total = `= ${fmt(Number(r.score))}`;
   if (r.game_id === "krillion" && d.line) return `${graphemes(d.line).slice(0, 7).join("")} ${total}`;
@@ -869,7 +875,7 @@ function renderChat() {
     const rk = isScore ? ranked.find((x) => x.uid === e.uid) : null;
     const tagS = isScore ? `<span class="stag">🔒 ${e.line ? "Locked in" : fmt(e.score)}${rk && ranked.length > 1 ? ` · ${MEDAL[rk.rank] || "#" + rk.rank}` : ""}</span>` : "";
     const tagSp = e.spoiler ? `<span class="stag sp">🙈 Spoiler</span>` : "";
-    const brk = e.line ? `<p class="brk">${esc(e.line)}</p>` : "";
+    const brk = e.tg && e.tg.length ? tgTable(e.tg, e.score) : e.line ? `<p class="brk">${esc(e.line)}</p>` : "";
     return `<div class="bub${mine ? " me" : ""}${cont ? " cont" : ""}${isScore ? " score" : ""}${e.spoiler ? " spoil" : ""}${e.id === focus ? " focus" : ""}" data-mid="${esc(e.id)}">
       ${mine ? "" : `<span class="bav">${cont ? "" : av(e.uid, "s")}</span>`}
       <div class="bwrap">

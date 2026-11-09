@@ -671,7 +671,14 @@ textarea.comment{min-height:64px}
 #replyX{font:inherit;font-size:20px;line-height:1;background:var(--soft);border:0;border-radius:999px;width:28px;height:28px;cursor:pointer;color:var(--ink);flex:none}
 /* Score breakdowns and spoilers in the day chat */
 .bb p.brk{font-size:15px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums}
-.bb p.brk + p{margin-top:4px}
+.bb p.brk + p, .tgt + p{margin-top:4px}
+.tgt{border-collapse:collapse;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;margin:2px 0}
+.tgt td{padding:1px 0 1px 10px;text-align:right}
+.tgt td:first-child{padding-left:0;opacity:.6;text-align:left}
+.tgt td{padding-left:14px}
+.tgt thead td{font-size:13px;padding-bottom:2px}
+.tgt tfoot td{font-size:15px;font-weight:800;padding-top:4px;border-top:1px solid currentColor;border-top-color:color-mix(in srgb,currentColor 25%,transparent)}
+.tgt tfoot td:first-child{border-top:0}
 .stag.sp{background:color-mix(in srgb,#7c3aed 16%,transparent);color:#7c3aed}
 .stag + .stag.sp{margin-left:4px}
 .bub.spoil:not(.me) .bb{background:color-mix(in srgb,#7c3aed 10%,var(--soft));border:1px dashed color-mix(in srgb,#7c3aed 45%,transparent)}
