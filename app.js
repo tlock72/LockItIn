@@ -876,14 +876,19 @@ function renderChat() {
     const tagS = isScore ? `<span class="stag">🔒 ${e.line ? "Locked in" : fmt(e.score)}${rk && ranked.length > 1 ? ` · ${MEDAL[rk.rank] || "#" + rk.rank}` : ""}</span>` : "";
     const tagSp = e.spoiler ? `<span class="stag sp">🙈 Spoiler</span>` : "";
     const brk = e.tg && e.tg.length ? tgTable(e.tg, e.score) : e.line ? `<p class="brk">${esc(e.line)}</p>` : "";
-    return `<div class="bub${mine ? " me" : ""}${cont ? " cont" : ""}${isScore ? " score" : ""}${e.spoiler ? " spoil" : ""}${e.id === focus ? " focus" : ""}" data-mid="${esc(e.id)}">
+    const bubble = (cls, cont, inner, meta) => `<div class="bub${mine ? " me" : ""}${cont ? " cont" : ""}${cls}" data-mid="${esc(e.id)}">
       ${mine ? "" : `<span class="bav">${cont ? "" : av(e.uid, "s")}</span>`}
       <div class="bwrap">
         ${cont || mine ? "" : `<div class="bname">${esc(nameOf(e.uid))}</div>`}
-        <div class="bb">${quote}${tagS}${tagSp}${brk}${e.body ? `<p>${esc(e.body)}</p>` : ""}</div>
-        <div class="bmeta"><span>${esc(timeOf(e.at))}</span><button type="button" class="blink" data-reply="${esc(e.id)}">Reply</button>${mine && e.msg ? `<button type="button" class="blink" data-delmsg="${esc(e.id)}">Delete</button>` : ""}</div>
+        <div class="bb">${inner}</div>
+        ${meta ? `<div class="bmeta"><span>${esc(timeOf(e.at))}</span><button type="button" class="blink" data-reply="${esc(e.id)}">Reply</button>${mine && e.msg ? `<button type="button" class="blink" data-delmsg="${esc(e.id)}">Delete</button>` : ""}</div>` : ""}
       </div>
     </div>`;
+    const foc = e.id === focus ? " focus" : "";
+    // A score is its own snug bubble; a comment posted with it follows as a separate text underneath.
+    if (isScore) return bubble(` score${e.body ? "" : foc}`, false, `${tagS}${brk}`, !e.body)
+      + (e.body ? bubble(foc, true, `<p>${esc(e.body)}</p>`, true) : "");
+    return bubble(`${e.spoiler ? " spoil" : ""}${foc}`, cont, `${quote}${tagSp}<p>${esc(e.body)}</p>`, true);
   }).join("") : `<div class="yempty">No chat on ${esc(g.name)} yet. Say something! 🦗</div>`;
   // Spoilers wait behind your own score: you see how many there are, and a button to lock in.
   const nh = hidden[`${gid}|${date}`] || 0;

@@ -672,8 +672,8 @@ textarea.comment{min-height:64px}
 /* Score breakdowns and spoilers in the day chat */
 .bb p.brk{font-size:15px;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums}
 .bb p.brk + p, .tgt + p{margin-top:4px}
-.tgt{border-collapse:collapse;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;margin:2px 0}
-.tgt td{padding:1px 0 1px 10px;text-align:right}
+.tgt{width:auto;border-collapse:collapse;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;margin:2px 0}
+.tgt td{padding:1px 0 1px 10px;text-align:right;border-bottom:0}
 .tgt td:first-child{padding-left:0;opacity:.6;text-align:left}
 .tgt td{padding-left:14px}
 .tgt thead td{font-size:13px;padding-bottom:2px}
@@ -780,3 +780,6 @@ textarea.comment{min-height:64px}
 @container card (min-height:400px) and (min-width:250px) and (max-width:600px){
   .gwin .dp .dpstep{height:max(24px,calc(var(--h) * clamp(16px,100cqh - 100px,110px)));line-height:1}
 }
+/* Score bubbles are only as wide as their breakdown; a comment with the score follows as its own text */
+.bub.score .bwrap{max-width:100%}
+.bub.score .bb{width:fit-content}
